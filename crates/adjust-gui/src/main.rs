@@ -30,12 +30,33 @@ use theme::*;
 use tiled_view::TiledViewer;
 use widgets::toast::ToastManager;
 
+fn load_app_icon() -> Option<egui::IconData> {
+    let png_bytes = include_bytes!("../assets/icon.png");
+    if let Ok(image) = image::load_from_memory(png_bytes) {
+        let rgba = image.to_rgba8();
+        let (width, height) = rgba.dimensions();
+        Some(egui::IconData {
+            rgba: rgba.into_raw(),
+            width,
+            height,
+        })
+    } else {
+        None
+    }
+}
+
 fn main() -> eframe::Result<()> {
+    let mut viewport = egui::ViewportBuilder::default()
+        .with_inner_size([1440.0, 920.0])
+        .with_min_inner_size([1100.0, 700.0])
+        .with_title("Limestone Pro — Studio Image Enhancement");
+
+    if let Some(icon) = load_app_icon() {
+        viewport = viewport.with_icon(icon);
+    }
+
     let native_options = eframe::NativeOptions {
-        viewport: egui::ViewportBuilder::default()
-            .with_inner_size([1440.0, 920.0])
-            .with_min_inner_size([1100.0, 700.0])
-            .with_title("Limestone Pro — Studio Image Enhancement"),
+        viewport,
         ..Default::default()
     };
 

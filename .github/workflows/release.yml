@@ -1,0 +1,142 @@
+name: Release Build (Windows MSI & macOS DMG)
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    name: Build Windows MSI Installer
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build release binary
+        run: cargo build --release -p adjust-gui
+
+      - name: Prepare binary directory
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path "bin" -Force
+          Copy-Item "target/release/adjust-gui.exe" -Destination "bin/Limestone.exe" -Force
+
+      - name: Build MSI with WiX Toolset
+        shell: pwsh
+        run: |
+          dotnet tool install --global wix
+          wix build wix/main.wxs -arch x64 -o dist/LimeStone-0.1.0-beta-x64.msi
+
+      - name: Upload Windows MSI artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: LimeStone-Windows-MSI
+          path: dist/LimeStone-0.1.0-beta-x64.msi
+
+  build-macos:
+    name: Build macOS DMG Installer
+    runs-on: macos-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-apple-darwin, aarch64-apple-darwin
+
+      - name: Build universal / ARM64 macOS binary
+        run: |
+          cargo build --release -p adjust-gui --target aarch64-apple-darwin
+          cargo build --release -p adjust-gui --target x86_64-apple-darwin
+
+      - name: Assemble macOS .app Bundle and DMG
+        run: |
+          mkdir -p "dist/LimeStone.app/Contents/MacOS"
+          mkdir -p "dist/LimeStone.app/Contents/Resources"
+
+          # Universal Mach-O binary
+          lipo -create \
+            target/aarch64-apple-darwin/release/adjust-gui \
+            target/x86_64-apple-darwin/release/adjust-gui \
+            -output "dist/LimeStone.app/Contents/MacOS/LimeStone"
+          chmod +x "dist/LimeStone.app/Contents/MacOS/LimeStone"
+
+          # Info.plist
+          cat << 'EOF' > dist/LimeStone.app/Contents/Info.plist
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>CFBundleExecutable</key>
+              <string>LimeStone</string>
+              <key>CFBundleIconFile</key>
+              <string>AppIcon</string>
+              <key>CFBundleIdentifier</key>
+              <string>com.limestone.studio</string>
+              <key>CFBundleName</key>
+              <string>LimeStone</string>
+              <key>CFBundlePackageType</key>
+              <string>APPL</string>
+              <key>CFBundleShortVersionString</key>
+              <string>0.1.0</string>
+              <key>CFBundleVersion</key>
+              <string>1</string>
+              <key>LSMinimumSystemVersion</key>
+              <string>10.15</string>
+              <key>NSHighResolutionCapable</key>
+              <true/>
+          </dict>
+          </plist>
+          EOF
+
+          # Convert PNG logo to ICNS
+          mkdir -p icon.iconset
+          sips -z 16 16     logo/logo.png --out icon.iconset/icon_16x16.png
+          sips -z 32 32     logo/logo.png --out icon.iconset/icon_16x16@2x.png
+          sips -z 32 32     logo/logo.png --out icon.iconset/icon_32x32.png
+          sips -z 64 64     logo/logo.png --out icon.iconset/icon_32x32@2x.png
+          sips -z 128 128   logo/logo.png --out icon.iconset/icon_128x128.png
+          sips -z 256 256   logo/logo.png --out icon.iconset/icon_128x128@2x.png
+          iconutil -c icns icon.iconset -o dist/LimeStone.app/Contents/Resources/AppIcon.icns || true
+
+          # Create DMG image
+          mkdir -p dmg_root
+          cp -r dist/LimeStone.app dmg_root/
+          ln -s /Applications dmg_root/Applications
+          hdiutil create -volname "LimeStone Pro" -srcfolder dmg_root -ov -format UDZO dist/LimeStone-0.1.0-beta-Universal.dmg
+
+      - name: Upload macOS DMG artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: LimeStone-macOS-DMG
+          path: dist/LimeStone-0.1.0-beta-Universal.dmg
+
+  publish-release:
+    name: Publish GitHub Release
+    needs: [build-windows, build-macos]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            artifacts/LimeStone-Windows-MSI/LimeStone-0.1.0-beta-x64.msi
+            artifacts/LimeStone-macOS-DMG/LimeStone-0.1.0-beta-Universal.dmg
+          name: LimeStone Pro 0.1.0-beta
+          prerelease: true
+          generate_release_notes: true

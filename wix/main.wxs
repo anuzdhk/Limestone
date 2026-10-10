@@ -1,0 +1,51 @@
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package Name="LimeStone Pro"
+           Manufacturer="LimeStone Studio"
+           Version="0.1.0"
+           UpgradeCode="A32D6561-2A1B-450F-A167-73B00DC75DA4"
+           Scope="perMachine">
+
+    <MajorUpgrade DowngradeErrorMessage="A newer version of LimeStone is already installed." />
+    <MediaTemplate EmbedCab="yes" />
+
+    <Icon Id="AppIcon" SourceFile="logo\logo.ico" />
+    <Property Id="ARPPRODUCTICON" Value="AppIcon" />
+
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="LimeStone">
+        <Component Id="MainExecutable" Guid="3BE9A9A0-2A3C-43F9-8250-96CD3DC4D620">
+          <File Id="LimeStoneExe" Name="Limestone.exe" Source="bin\Limestone.exe" KeyPath="yes">
+            <Shortcut Id="DesktopShortcut"
+                      Directory="DesktopFolder"
+                      Name="LimeStone Pro"
+                      WorkingDirectory="INSTALLFOLDER"
+                      Icon="AppIcon"
+                      Advertise="yes" />
+            <Shortcut Id="StartMenuShortcut"
+                      Directory="ProgramMenuDir"
+                      Name="LimeStone Pro"
+                      WorkingDirectory="INSTALLFOLDER"
+                      Icon="AppIcon"
+                      Advertise="yes" />
+          </File>
+        </Component>
+      </Directory>
+    </StandardDirectory>
+
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Directory Id="ProgramMenuDir" Name="LimeStone Pro">
+        <Component Id="ProgramMenuShortcutComp" Guid="7293AA6B-9524-4B2E-BE60-F2E51A21BAF2">
+          <RemoveFolder Id="CleanUpProgramMenuDir" On="uninstall" />
+          <RegistryValue Root="HKCU" Key="Software\LimeStoneStudio\LimeStone" Name="installed" Type="integer" Value="1" KeyPath="yes" />
+        </Component>
+      </Directory>
+    </StandardDirectory>
+
+    <StandardDirectory Id="DesktopFolder" />
+
+    <Feature Id="MainApplication" Title="LimeStone Application" Level="1">
+      <ComponentRef Id="MainExecutable" />
+      <ComponentRef Id="ProgramMenuShortcutComp" />
+    </Feature>
+  </Package>
+</Wix>

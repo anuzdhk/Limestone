@@ -1,10 +1,22 @@
-# Limestone v0.4
+# LimeStone Pro (Beta Release)
 
 [![Rust](https://img.shields.io/badge/rust-1.80%2B-orange.svg)](https://www.rust-lang.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg)]()
+[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS-lightgrey.svg)]()
+[![Release](https://img.shields.io/badge/release-v0.1.0--beta-brightgreen.svg)](https://github.com/anuzdhk/Limestone/releases)
 
-A clean-room, zero-overhead Rust implementation and reverse-engineered clone of **Topaz Adjust 4.0** (released in 2010 by Topaz Labs). Features multithreaded $O(1)$ separable guided filtering, Retinex local tone mapping, micro-contrast enhancement, natural cubic spline curve manipulation, and an **Antigravity Dark Studio UI** powered by [egui](https://github.com/emilk/egui) and [Tabler Icons](https://tabler.io/icons).
+A clean-room, zero-overhead Rust desktop application and reverse-engineered clone of **Topaz Adjust 4.0**. Features multithreaded $O(1)$ separable guided filtering, Retinex local tone mapping, micro-contrast enhancement, natural cubic spline curve manipulation, and a pro studio UI powered by [egui](https://github.com/emilk/egui) and [Tabler Icons](https://tabler.io/icons).
+
+---
+
+## 📦 Downloads & Installation
+
+| Platform | Package Format | Download / Build |
+| :--- | :--- | :--- |
+| **Windows (x64)** | **MSI Installer** (`.msi`) | [`dist/LimeStone-0.1.0-beta-x64.msi`](dist/LimeStone-0.1.0-beta-x64.msi) |
+| **Windows (x64)** | **Portable Binary** (`.exe`) | [`bin/Limestone.exe`](bin/Limestone.exe) |
+| **macOS (Universal)** | **Apple Disk Image** (`.dmg`) | [GitHub Release / CI Artifact](https://github.com/anuzdhk/Limestone/actions) or run `./scripts/build_macos_dmg.sh` |
+
 
 ---
 

@@ -9,8 +9,9 @@ pub mod stages;
 // Re-exports for convenient usage
 pub use image_buffer::RgbImageF32;
 pub use params::{
-    AdaptiveExposureParams, AdjustParams, BasicExposureParams, ColorParams, CurveParams,
-    CurvePoint, DetailsParams, FinishingParams, GrainParams, NoiseParams, VignetteParams,
+    AdaptiveExposureParams, AdjustParams, BasicExposureParams, BorderParams, ColorParams,
+    CurveParams, CurvePoint, DetailsParams, FinishingParams, GrainParams, NoiseParams,
+    VignetteParams,
 };
 pub use pipeline::process_image;
 pub use preset::{get_factory_presets, Preset};

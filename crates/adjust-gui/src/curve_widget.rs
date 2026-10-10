@@ -110,6 +110,9 @@ pub fn render_curve_editor(
                 }
 
                 if let Some(idx) = closest_idx {
+                    let old_x = params.points[idx].x;
+                    let old_y = params.points[idx].y;
+
                     // Update point
                     if idx == 0 {
                         params.points[idx].y = rel_y; // Keep x=0.0
@@ -119,8 +122,11 @@ pub fn render_curve_editor(
                         params.points[idx].x = rel_x;
                         params.points[idx].y = rel_y;
                     }
-                    params.enabled = true;
-                    *is_dirty = true;
+
+                    if (params.points[idx].x - old_x).abs() > 0.001 || (params.points[idx].y - old_y).abs() > 0.001 {
+                        params.enabled = true;
+                        *is_dirty = true;
+                    }
                 }
             } else if response.clicked_by(egui::PointerButton::Primary) {
                 // Click on curve to add a new point if not clicking on existing point

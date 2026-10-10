@@ -50,9 +50,10 @@ impl Default for AdaptiveExposureParams {
 pub struct DetailsParams {
     pub enabled: bool,
     pub strength: f32,              // -1.0 .. 3.0, default 0.0 (negative softens/smooths)
-    pub boost: f32,                 // 0.0 .. 3.0, default 1.0
+    pub detail_boost: f32,          // 0.0 .. 3.0, default 1.0
     pub threshold: f32,             // 0.0 .. 1.0, default 0.10
-    pub radius: f32,                // 0.5 .. 10.0, default 1.0
+    pub radius: f32,                // 0.5 .. 30.0, default 1.0
+    pub sharpen: f32,               // 0.0 .. 2.0, default 0.0 (high frequency unsharp mask)
     pub process_independently: bool,// default true
 }
 
@@ -61,9 +62,10 @@ impl Default for DetailsParams {
         Self {
             enabled: true,
             strength: 0.0,
-            boost: 1.0,
+            detail_boost: 1.0,
             threshold: 0.10,
             radius: 1.0,
+            sharpen: 0.0,
             process_independently: true,
         }
     }
@@ -218,12 +220,30 @@ impl Default for GrainParams {
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct BorderParams {
+    pub enabled: bool,
+    pub thickness: f32,  // 0.0 .. 0.20 (percentage of min dimension), default 0.0
+    pub color: [f32; 3], // RGB in 0.0 .. 1.0, default [1.0, 1.0, 1.0] (White)
+}
+
+impl Default for BorderParams {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            thickness: 0.0,
+            color: [1.0, 1.0, 1.0],
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct FinishingParams {
     pub enabled: bool,
     pub transparency: f32, // 0.0 .. 1.0, default 0.0 (0.0 = 100% effect, 1.0 = original image)
     pub warmth: f32,       // -1.0 .. 1.0, default 0.0 (negative = cool, positive = warm)
     pub vignette: VignetteParams,
     pub grain: GrainParams,
+    pub border: BorderParams,
 }
 
 impl Default for FinishingParams {
@@ -234,6 +254,7 @@ impl Default for FinishingParams {
             warmth: 0.0,
             vignette: VignetteParams::default(),
             grain: GrainParams::default(),
+            border: BorderParams::default(),
         }
     }
 }

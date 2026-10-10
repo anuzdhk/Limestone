@@ -1,6 +1,7 @@
 use crate::params::{
-    AdaptiveExposureParams, AdjustParams, BasicExposureParams, ColorParams, CurveParams,
-    CurvePoint, DetailsParams, FinishingParams, GrainParams, NoiseParams, VignetteParams,
+    AdaptiveExposureParams, AdjustParams, BasicExposureParams, BorderParams, ColorParams,
+    CurveParams, CurvePoint, DetailsParams, FinishingParams, GrainParams, NoiseParams,
+    VignetteParams,
 };
 use serde::{Deserialize, Serialize};
 
@@ -58,9 +59,10 @@ pub fn get_factory_presets() -> Vec<Preset> {
                 details: DetailsParams {
                     enabled: true,
                     strength: 1.40,
-                    boost: 1.20,
+                    detail_boost: 1.20,
                     threshold: 0.08,
                     radius: 1.2,
+                    sharpen: 0.20,
                     process_independently: true,
                 },
                 color: ColorParams {
@@ -88,6 +90,7 @@ pub fn get_factory_presets() -> Vec<Preset> {
                         roundness: 0.0,
                     },
                     grain: GrainParams::default(),
+                    border: BorderParams::default(),
                 },
             },
         },
@@ -95,7 +98,7 @@ pub fn get_factory_presets() -> Vec<Preset> {
         // 2. Dramatic
         Preset {
             name: "Dramatic".to_string(),
-            category: "HDR & Stylized".to_string(),
+            category: "HDR Collection".to_string(),
             description: "Cinematic, gritty contrast with extreme micro-details and desaturated tones.".to_string(),
             params: AdjustParams {
                 basic_exposure: BasicExposureParams {
@@ -117,9 +120,10 @@ pub fn get_factory_presets() -> Vec<Preset> {
                 details: DetailsParams {
                     enabled: true,
                     strength: 2.10,
-                    boost: 1.50,
+                    detail_boost: 1.50,
                     threshold: 0.06,
                     radius: 1.5,
+                    sharpen: 0.40,
                     process_independently: true,
                 },
                 color: ColorParams {
@@ -158,15 +162,103 @@ pub fn get_factory_presets() -> Vec<Preset> {
                         amount: 0.15,
                         size: 1.0,
                     },
+                    border: BorderParams::default(),
                 },
             },
         },
 
-        // 3. Photo Pop
+        // 3. Mild Contrast Pop (Shown selected in Topaz Adjust 4 starfish UI)
+        Preset {
+            name: "Mild Contrast Pop".to_string(),
+            category: "Classic Collection".to_string(),
+            description: "Subtle local contrast and exposure boost suitable for almost any scene.".to_string(),
+            params: AdjustParams {
+                basic_exposure: BasicExposureParams::default(),
+                adaptive_exposure: AdaptiveExposureParams {
+                    enabled: true,
+                    adaptive_exposure: 0.07,
+                    regions: 5,
+                    contrast: 0.56,
+                    brightness: 0.0,
+                    protect_highlights: 0.02,
+                    protect_shadows: 0.02,
+                },
+                details: DetailsParams {
+                    enabled: true,
+                    strength: 1.00,
+                    detail_boost: 1.00,
+                    threshold: 0.15,
+                    radius: 25.0,
+                    sharpen: 1.00,
+                    process_independently: true,
+                },
+                color: ColorParams {
+                    enabled: true,
+                    adaptive_saturation: 0.0,
+                    color_regions: 1,
+                    saturation: 1.00,
+                    saturation_boost: 1.00,
+                    hue: 0.0,
+                },
+                noise: NoiseParams::default(),
+                curve: CurveParams::default(),
+                finishing: FinishingParams::default(),
+            },
+        },
+
+        // 4. Detail - Light
+        Preset {
+            name: "Detail - Light".to_string(),
+            category: "Classic Collection".to_string(),
+            description: "Gentle high-frequency texture enhancement without introducing noise.".to_string(),
+            params: AdjustParams {
+                basic_exposure: BasicExposureParams::default(),
+                adaptive_exposure: AdaptiveExposureParams::default(),
+                details: DetailsParams {
+                    enabled: true,
+                    strength: 0.50,
+                    detail_boost: 1.00,
+                    threshold: 0.12,
+                    radius: 1.0,
+                    sharpen: 0.30,
+                    process_independently: true,
+                },
+                color: ColorParams::default(),
+                noise: NoiseParams::default(),
+                curve: CurveParams::default(),
+                finishing: FinishingParams::default(),
+            },
+        },
+
+        // 5. Detail - Medium
+        Preset {
+            name: "Detail - Medium".to_string(),
+            category: "Classic Collection".to_string(),
+            description: "Noticeable boost in clarity, micro-texture, and fine edge delineation.".to_string(),
+            params: AdjustParams {
+                basic_exposure: BasicExposureParams::default(),
+                adaptive_exposure: AdaptiveExposureParams::default(),
+                details: DetailsParams {
+                    enabled: true,
+                    strength: 1.10,
+                    detail_boost: 1.15,
+                    threshold: 0.08,
+                    radius: 1.2,
+                    sharpen: 0.60,
+                    process_independently: true,
+                },
+                color: ColorParams::default(),
+                noise: NoiseParams::default(),
+                curve: CurveParams::default(),
+                finishing: FinishingParams::default(),
+            },
+        },
+
+        // 6. Photo Pop
         Preset {
             name: "Photo Pop".to_string(),
-            category: "Exposure & Detail".to_string(),
-            description: "Clean, natural enhancement bringing clarity, brightness, and color vibrance without looking overcooked.".to_string(),
+            category: "Classic Collection".to_string(),
+            description: "Clean, natural enhancement bringing clarity, brightness, and color vibrance.".to_string(),
             params: AdjustParams {
                 basic_exposure: BasicExposureParams {
                     enabled: true,
@@ -187,9 +279,10 @@ pub fn get_factory_presets() -> Vec<Preset> {
                 details: DetailsParams {
                     enabled: true,
                     strength: 0.65,
-                    boost: 1.05,
+                    detail_boost: 1.05,
                     threshold: 0.12,
                     radius: 1.0,
+                    sharpen: 0.30,
                     process_independently: true,
                 },
                 color: ColorParams {
@@ -206,10 +299,10 @@ pub fn get_factory_presets() -> Vec<Preset> {
             },
         },
 
-        // 4. Exposure Correction
+        // 7. Exposure Correction
         Preset {
             name: "Exposure Correction".to_string(),
-            category: "Exposure & Detail".to_string(),
+            category: "Classic Collection".to_string(),
             description: "Balanced dynamic range recovery for underexposed shadows and harsh highlights.".to_string(),
             params: AdjustParams {
                 basic_exposure: BasicExposureParams::default(),
@@ -237,20 +330,29 @@ pub fn get_factory_presets() -> Vec<Preset> {
             },
         },
 
-        // 5. Detail Medium
+        // 8. Equalize
         Preset {
-            name: "Detail Medium".to_string(),
-            category: "Exposure & Detail".to_string(),
-            description: "Moderate texture and edge definition enhancement.".to_string(),
+            name: "Equalize".to_string(),
+            category: "Classic Collection".to_string(),
+            description: "Uniform tonal redistribution across the entire dynamic spectrum.".to_string(),
             params: AdjustParams {
                 basic_exposure: BasicExposureParams::default(),
-                adaptive_exposure: AdaptiveExposureParams::default(),
+                adaptive_exposure: AdaptiveExposureParams {
+                    enabled: true,
+                    adaptive_exposure: 1.30,
+                    regions: 12,
+                    contrast: -0.10,
+                    brightness: 0.0,
+                    protect_highlights: 0.40,
+                    protect_shadows: 0.40,
+                },
                 details: DetailsParams {
                     enabled: true,
-                    strength: 1.20,
-                    boost: 1.10,
-                    threshold: 0.08,
+                    strength: 0.40,
+                    detail_boost: 1.0,
+                    threshold: 0.10,
                     radius: 1.0,
+                    sharpen: 0.20,
                     process_independently: true,
                 },
                 color: ColorParams::default(),
@@ -260,38 +362,364 @@ pub fn get_factory_presets() -> Vec<Preset> {
             },
         },
 
-        // 6. Detail Strong
+        // 9. Highlight Recovery
         Preset {
-            name: "Detail Strong".to_string(),
-            category: "Exposure & Detail".to_string(),
-            description: "Aggressive micro-contrast for architecture, machinery, and complex textures.".to_string(),
+            name: "Highlight Recovery".to_string(),
+            category: "Classic Collection".to_string(),
+            description: "Aggressively restores texture and detail in blown-out sky and specular areas.".to_string(),
             params: AdjustParams {
-                basic_exposure: BasicExposureParams::default(),
-                adaptive_exposure: AdaptiveExposureParams::default(),
-                details: DetailsParams {
+                basic_exposure: BasicExposureParams {
                     enabled: true,
-                    strength: 2.20,
-                    boost: 1.40,
-                    threshold: 0.05,
-                    radius: 1.2,
-                    process_independently: true,
+                    brightness: -0.10,
+                    contrast: 0.05,
+                    boost_blacks: 0.0,
+                    boost_whites: 0.0,
                 },
+                adaptive_exposure: AdaptiveExposureParams {
+                    enabled: true,
+                    adaptive_exposure: 0.85,
+                    regions: 14,
+                    contrast: 0.10,
+                    brightness: -0.05,
+                    protect_highlights: 0.80,
+                    protect_shadows: 0.10,
+                },
+                details: DetailsParams::default(),
+                color: ColorParams::default(),
+                noise: NoiseParams::default(),
+                curve: CurveParams::default(),
+                finishing: FinishingParams::default(),
+            },
+        },
+
+        // 10. Shadow Recovery
+        Preset {
+            name: "Shadow Recovery".to_string(),
+            category: "Classic Collection".to_string(),
+            description: "Lifts blocked shadow regions while suppressing dark-area luminance noise.".to_string(),
+            params: AdjustParams {
+                basic_exposure: BasicExposureParams {
+                    enabled: true,
+                    brightness: 0.05,
+                    contrast: -0.05,
+                    boost_blacks: 0.0,
+                    boost_whites: 0.0,
+                },
+                adaptive_exposure: AdaptiveExposureParams {
+                    enabled: true,
+                    adaptive_exposure: 1.20,
+                    regions: 10,
+                    contrast: -0.05,
+                    brightness: 0.08,
+                    protect_highlights: 0.10,
+                    protect_shadows: 0.80,
+                },
+                details: DetailsParams::default(),
                 color: ColorParams::default(),
                 noise: NoiseParams {
                     enabled: true,
-                    suppression: 0.20,
-                    amount: 0.40,
+                    suppression: 0.35,
+                    amount: 0.50,
                 },
                 curve: CurveParams::default(),
                 finishing: FinishingParams::default(),
             },
         },
 
-        // 7. Painting
+        // 11. High Key I
+        Preset {
+            name: "High Key I".to_string(),
+            category: "Classic Collection".to_string(),
+            description: "Bright, airy, ethereal atmosphere with luminous whites and soft contrast.".to_string(),
+            params: AdjustParams {
+                basic_exposure: BasicExposureParams {
+                    enabled: true,
+                    brightness: 0.25,
+                    contrast: -0.10,
+                    boost_blacks: 0.0,
+                    boost_whites: 0.20,
+                },
+                adaptive_exposure: AdaptiveExposureParams {
+                    enabled: true,
+                    adaptive_exposure: 0.60,
+                    regions: 8,
+                    contrast: -0.15,
+                    brightness: 0.15,
+                    protect_highlights: 0.10,
+                    protect_shadows: 0.30,
+                },
+                details: DetailsParams {
+                    enabled: true,
+                    strength: -0.20,
+                    detail_boost: 0.90,
+                    threshold: 0.15,
+                    radius: 1.5,
+                    sharpen: 0.10,
+                    process_independently: true,
+                },
+                color: ColorParams {
+                    enabled: true,
+                    adaptive_saturation: -0.10,
+                    color_regions: 10,
+                    saturation: -0.15,
+                    saturation_boost: 0.90,
+                    hue: 0.0,
+                },
+                noise: NoiseParams::default(),
+                curve: CurveParams::default(),
+                finishing: FinishingParams::default(),
+            },
+        },
+
+        // 12. Low Key I
+        Preset {
+            name: "Low Key I".to_string(),
+            category: "Classic Collection".to_string(),
+            description: "Moody, shadow-dominant aesthetic with high drama and deep blacks.".to_string(),
+            params: AdjustParams {
+                basic_exposure: BasicExposureParams {
+                    enabled: true,
+                    brightness: -0.20,
+                    contrast: 0.20,
+                    boost_blacks: 0.30,
+                    boost_whites: 0.05,
+                },
+                adaptive_exposure: AdaptiveExposureParams {
+                    enabled: true,
+                    adaptive_exposure: 0.40,
+                    regions: 12,
+                    contrast: 0.25,
+                    brightness: -0.15,
+                    protect_highlights: 0.40,
+                    protect_shadows: 0.10,
+                },
+                details: DetailsParams {
+                    enabled: true,
+                    strength: 0.80,
+                    detail_boost: 1.20,
+                    threshold: 0.08,
+                    radius: 1.2,
+                    sharpen: 0.50,
+                    process_independently: true,
+                },
+                color: ColorParams::default(),
+                noise: NoiseParams::default(),
+                curve: CurveParams::default(),
+                finishing: FinishingParams {
+                    enabled: true,
+                    warmth: -0.05,
+                    transparency: 0.0,
+                    vignette: VignetteParams {
+                        amount: -0.35,
+                        size: 0.55,
+                        transition: 0.45,
+                        roundness: 0.2,
+                    },
+                    grain: GrainParams::default(),
+                    border: BorderParams::default(),
+                },
+            },
+        },
+
+        // 13. Mild Color Pop
+        Preset {
+            name: "Mild Color Pop".to_string(),
+            category: "Vibrant Collection".to_string(),
+            description: "Invigorates flat chromas while keeping natural skintones protected.".to_string(),
+            params: AdjustParams {
+                basic_exposure: BasicExposureParams::default(),
+                adaptive_exposure: AdaptiveExposureParams {
+                    enabled: true,
+                    adaptive_exposure: 0.30,
+                    regions: 8,
+                    contrast: 0.05,
+                    brightness: 0.0,
+                    protect_highlights: 0.10,
+                    protect_shadows: 0.10,
+                },
+                details: DetailsParams::default(),
+                color: ColorParams {
+                    enabled: true,
+                    adaptive_saturation: 0.45,
+                    color_regions: 8,
+                    saturation: 0.12,
+                    saturation_boost: 1.20,
+                    hue: 0.0,
+                },
+                noise: NoiseParams::default(),
+                curve: CurveParams::default(),
+                finishing: FinishingParams::default(),
+            },
+        },
+
+        // 14. Simple Pop
+        Preset {
+            name: "Simple Pop".to_string(),
+            category: "Vibrant Collection".to_string(),
+            description: "One-click universal punch for mobile photos and overcast days.".to_string(),
+            params: AdjustParams {
+                basic_exposure: BasicExposureParams {
+                    enabled: true,
+                    brightness: 0.03,
+                    contrast: 0.10,
+                    boost_blacks: 0.05,
+                    boost_whites: 0.05,
+                },
+                adaptive_exposure: AdaptiveExposureParams {
+                    enabled: true,
+                    adaptive_exposure: 0.50,
+                    regions: 8,
+                    contrast: 0.12,
+                    brightness: 0.02,
+                    protect_highlights: 0.20,
+                    protect_shadows: 0.15,
+                },
+                details: DetailsParams {
+                    enabled: true,
+                    strength: 0.80,
+                    detail_boost: 1.10,
+                    threshold: 0.10,
+                    radius: 1.0,
+                    sharpen: 0.40,
+                    process_independently: true,
+                },
+                color: ColorParams {
+                    enabled: true,
+                    adaptive_saturation: 0.35,
+                    color_regions: 10,
+                    saturation: 0.08,
+                    saturation_boost: 1.10,
+                    hue: 0.0,
+                },
+                noise: NoiseParams::default(),
+                curve: CurveParams::default(),
+                finishing: FinishingParams::default(),
+            },
+        },
+
+        // 15. Warm Tone I
+        Preset {
+            name: "Warm Tone I".to_string(),
+            category: "Toned Collection".to_string(),
+            description: "Pleasing golden-hour warmth and softened contrast.".to_string(),
+            params: AdjustParams {
+                basic_exposure: BasicExposureParams::default(),
+                adaptive_exposure: AdaptiveExposureParams {
+                    enabled: true,
+                    adaptive_exposure: 0.40,
+                    regions: 10,
+                    contrast: 0.05,
+                    brightness: 0.02,
+                    protect_highlights: 0.15,
+                    protect_shadows: 0.10,
+                },
+                details: DetailsParams::default(),
+                color: ColorParams {
+                    enabled: true,
+                    adaptive_saturation: 0.20,
+                    color_regions: 10,
+                    saturation: 0.05,
+                    saturation_boost: 1.05,
+                    hue: 4.0,
+                },
+                noise: NoiseParams::default(),
+                curve: CurveParams::default(),
+                finishing: FinishingParams {
+                    enabled: true,
+                    warmth: 0.25,
+                    transparency: 0.0,
+                    vignette: VignetteParams::default(),
+                    grain: GrainParams::default(),
+                    border: BorderParams::default(),
+                },
+            },
+        },
+
+        // 16. Cool Tone I
+        Preset {
+            name: "Cool Tone I".to_string(),
+            category: "Toned Collection".to_string(),
+            description: "Crisp Nordic coolness with clean whites and cyan-tinged shadows.".to_string(),
+            params: AdjustParams {
+                basic_exposure: BasicExposureParams::default(),
+                adaptive_exposure: AdaptiveExposureParams {
+                    enabled: true,
+                    adaptive_exposure: 0.40,
+                    regions: 10,
+                    contrast: 0.10,
+                    brightness: 0.0,
+                    protect_highlights: 0.20,
+                    protect_shadows: 0.15,
+                },
+                details: DetailsParams::default(),
+                color: ColorParams {
+                    enabled: true,
+                    adaptive_saturation: 0.10,
+                    color_regions: 10,
+                    saturation: -0.05,
+                    saturation_boost: 1.0,
+                    hue: -5.0,
+                },
+                noise: NoiseParams::default(),
+                curve: CurveParams::default(),
+                finishing: FinishingParams {
+                    enabled: true,
+                    warmth: -0.25,
+                    transparency: 0.0,
+                    vignette: VignetteParams::default(),
+                    grain: GrainParams::default(),
+                    border: BorderParams::default(),
+                },
+            },
+        },
+
+        // 17. Soft Focus I
+        Preset {
+            name: "Soft Focus I".to_string(),
+            category: "Stylized Collection".to_string(),
+            description: "Dreamy romantic glow attenuating hard digital edges.".to_string(),
+            params: AdjustParams {
+                basic_exposure: BasicExposureParams {
+                    enabled: true,
+                    brightness: 0.06,
+                    contrast: -0.10,
+                    boost_blacks: 0.0,
+                    boost_whites: 0.05,
+                },
+                adaptive_exposure: AdaptiveExposureParams {
+                    enabled: true,
+                    adaptive_exposure: 0.50,
+                    regions: 8,
+                    contrast: -0.10,
+                    brightness: 0.05,
+                    protect_highlights: 0.20,
+                    protect_shadows: 0.20,
+                },
+                details: DetailsParams {
+                    enabled: true,
+                    strength: -0.50,
+                    detail_boost: 0.75,
+                    threshold: 0.18,
+                    radius: 2.0,
+                    sharpen: 0.0,
+                    process_independently: true,
+                },
+                color: ColorParams::default(),
+                noise: NoiseParams {
+                    enabled: true,
+                    suppression: 0.30,
+                    amount: 0.50,
+                },
+                curve: CurveParams::default(),
+                finishing: FinishingParams::default(),
+            },
+        },
+
+        // 18. Painting
         Preset {
             name: "Painting".to_string(),
-            category: "Stylized & Creative".to_string(),
-            description: "Stylized illustrative look with broad edge halos and saturated oil-painting tones.".to_string(),
+            category: "Stylized Collection".to_string(),
+            description: "Illustrative look with rich edge halos and saturated oil-painting tones.".to_string(),
             params: AdjustParams {
                 basic_exposure: BasicExposureParams {
                     enabled: true,
@@ -312,9 +740,10 @@ pub fn get_factory_presets() -> Vec<Preset> {
                 details: DetailsParams {
                     enabled: true,
                     strength: 2.50,
-                    boost: 1.80,
+                    detail_boost: 1.80,
                     threshold: 0.04,
                     radius: 2.8,
+                    sharpen: 0.80,
                     process_independently: true,
                 },
                 color: ColorParams {
@@ -342,14 +771,15 @@ pub fn get_factory_presets() -> Vec<Preset> {
                         roundness: 0.3,
                     },
                     grain: GrainParams::default(),
+                    border: BorderParams::default(),
                 },
             },
         },
 
-        // 8. French Countryside
+        // 19. French Countryside
         Preset {
             name: "French Countryside".to_string(),
-            category: "Stylized & Creative".to_string(),
+            category: "Stylized Collection".to_string(),
             description: "Warm golden atmospheric tone with deep shadows and soft highlights.".to_string(),
             params: AdjustParams {
                 basic_exposure: BasicExposureParams {
@@ -371,9 +801,10 @@ pub fn get_factory_presets() -> Vec<Preset> {
                 details: DetailsParams {
                     enabled: true,
                     strength: 1.10,
-                    boost: 1.10,
+                    detail_boost: 1.10,
                     threshold: 0.09,
                     radius: 1.2,
+                    sharpen: 0.40,
                     process_independently: true,
                 },
                 color: ColorParams {
@@ -400,68 +831,75 @@ pub fn get_factory_presets() -> Vec<Preset> {
                         amount: 0.10,
                         size: 1.2,
                     },
+                    border: BorderParams::default(),
                 },
             },
         },
 
-        // 9. Portrait Smooth
+        // 20. Film Collection Look
         Preset {
-            name: "Portrait Smooth".to_string(),
-            category: "Portrait & Beauty".to_string(),
-            description: "Gentle skin smoothing with noise suppression while retaining hair and eye clarity.".to_string(),
+            name: "Vintage 35mm".to_string(),
+            category: "Film Collection".to_string(),
+            description: "Classic analog color reproduction with subtle grain and lifted blacks.".to_string(),
             params: AdjustParams {
                 basic_exposure: BasicExposureParams {
                     enabled: true,
-                    brightness: 0.04,
-                    contrast: -0.05,
-                    boost_blacks: 0.0,
+                    brightness: 0.02,
+                    contrast: 0.08,
+                    boost_blacks: -0.05,
                     boost_whites: 0.02,
                 },
                 adaptive_exposure: AdaptiveExposureParams {
                     enabled: true,
-                    adaptive_exposure: 0.30,
-                    regions: 8,
-                    contrast: -0.05,
-                    brightness: 0.03,
-                    protect_highlights: 0.30,
+                    adaptive_exposure: 0.35,
+                    regions: 10,
+                    contrast: 0.08,
+                    brightness: 0.02,
+                    protect_highlights: 0.20,
                     protect_shadows: 0.20,
                 },
                 details: DetailsParams {
                     enabled: true,
-                    strength: -0.35, // Negative strength softens micro-texture
-                    boost: 0.80,
-                    threshold: 0.15,
-                    radius: 1.5,
+                    strength: 0.40,
+                    detail_boost: 1.0,
+                    threshold: 0.10,
+                    radius: 1.0,
+                    sharpen: 0.20,
                     process_independently: true,
                 },
                 color: ColorParams {
                     enabled: true,
-                    adaptive_saturation: 0.20,
+                    adaptive_saturation: 0.15,
                     color_regions: 10,
-                    saturation: -0.05,
+                    saturation: -0.08,
                     saturation_boost: 0.95,
-                    hue: 0.0,
+                    hue: 3.0,
                 },
-                noise: NoiseParams {
-                    enabled: true,
-                    suppression: 0.45,
-                    amount: 0.60,
-                },
-                curve: CurveParams::default(),
+                noise: NoiseParams::default(),
+                curve: CurveParams::matte_film(),
                 finishing: FinishingParams {
                     enabled: true,
-                    warmth: 0.08,
+                    warmth: 0.12,
                     transparency: 0.0,
-                    vignette: VignetteParams::default(),
-                    grain: GrainParams::default(),
+                    vignette: VignetteParams {
+                        amount: -0.15,
+                        size: 0.65,
+                        transition: 0.50,
+                        roundness: 0.0,
+                    },
+                    grain: GrainParams {
+                        amount: 0.25,
+                        size: 1.2,
+                    },
+                    border: BorderParams::default(),
                 },
             },
         },
 
-        // 10. Neutral / Reset
+        // 21. Neutral / Reset
         Preset {
             name: "Neutral".to_string(),
-            category: "Exposure & Detail".to_string(),
+            category: "Classic Collection".to_string(),
             description: "Unmodified baseline with all adjustments at default settings.".to_string(),
             params: AdjustParams::default(),
         },

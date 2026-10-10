@@ -77,6 +77,13 @@ enum ViewMode {
     SideBySide,
 }
 
+#[derive(PartialEq, Clone, Copy)]
+enum InspectorTab {
+    Navigate,
+    Loupe,
+    Histogram,
+}
+
 struct AdjustApp {
     image_path: Option<PathBuf>,
     original_f32: Option<RgbImageF32>,
@@ -85,13 +92,17 @@ struct AdjustApp {
 
     orig_texture: Option<egui::TextureHandle>,
     proc_texture: Option<egui::TextureHandle>,
+    nav_texture: Option<egui::TextureHandle>,
 
     params: AdjustParams,
     presets: Vec<Preset>,
     selected_preset_name: String,
+    selected_collection: String,
     preset_search: String,
+    favorite_presets: std::collections::HashSet<String>,
 
     view_mode: ViewMode,
+    inspector_tab: InspectorTab,
     split_ratio: f32, // 0.0 .. 1.0
     zoom: f32,
     pan: egui::Vec2,
@@ -99,12 +110,13 @@ struct AdjustApp {
     histogram: Option<HistogramData>,
     is_dirty: bool,
     last_process_time: f32,
+    snapshots: Vec<AdjustParams>,
 }
 
 impl AdjustApp {
     fn new(_cc: &eframe::CreationContext<'_>) -> Self {
         let presets = get_factory_presets();
-        let default_preset = presets[0].clone();
+        let default_preset = presets.iter().find(|p| p.name == "Mild Contrast Pop").cloned().unwrap_or_else(|| presets[0].clone());
 
         let mut app = Self {
             image_path: None,
@@ -113,17 +125,22 @@ impl AdjustApp {
             preview_proc_f32: None,
             orig_texture: None,
             proc_texture: None,
-            params: default_preset.params,
+            nav_texture: None,
+            params: default_preset.params.clone(),
             presets,
             selected_preset_name: default_preset.name,
+            selected_collection: "All Collections".to_string(),
             preset_search: String::new(),
+            favorite_presets: std::collections::HashSet::new(),
             view_mode: ViewMode::Split,
+            inspector_tab: InspectorTab::Navigate,
             split_ratio: 0.5,
             zoom: 1.0,
             pan: egui::Vec2::ZERO,
             histogram: None,
             is_dirty: false,
             last_process_time: 0.0,
+            snapshots: Vec::new(),
         };
 
         app.load_default_sample();
@@ -169,13 +186,15 @@ impl AdjustApp {
 
     fn set_image(&mut self, img: RgbImage, path: PathBuf) {
         let f32_full = RgbImageF32::from_rgb8(&img);
-        let preview = f32_full.downsample(1280);
+        // High-responsiveness interactive preview downsampled to 960px for immediate slider & curve feedback
+        let preview = f32_full.downsample(960);
 
         self.image_path = Some(path);
         self.original_f32 = Some(f32_full);
         self.preview_orig_f32 = Some(preview);
         self.orig_texture = None;
         self.proc_texture = None;
+        self.nav_texture = None;
         self.is_dirty = true;
     }
 
@@ -204,7 +223,9 @@ impl AdjustApp {
                     [rgb8.width() as usize, rgb8.height() as usize],
                     rgb8.as_raw(),
                 );
-                self.orig_texture = Some(ctx.load_texture("original_view", color_image, egui::TextureOptions::LINEAR));
+                self.orig_texture = Some(ctx.load_texture("original_view", color_image.clone(), egui::TextureOptions::LINEAR));
+                // Also create nav thumbnail texture
+                self.nav_texture = Some(ctx.load_texture("nav_view", color_image, egui::TextureOptions::LINEAR));
             }
         }
 
@@ -219,19 +240,19 @@ impl eframe::App for AdjustApp {
         }
 
         // ==========================================
-        // 1. TOP HEADER TOOLBAR
+        // 1. TOP HEADER TOOLBAR (ANTIGRAVITY / TOPAZ STYLE)
         // ==========================================
         egui::TopBottomPanel::top("top_header")
-            .exact_height(52.0)
+            .exact_height(50.0)
             .show(ctx, |ui| {
                 ui.horizontal_centered(|ui| {
-                    ui.add_space(6.0);
+                    ui.add_space(8.0);
 
-                    // App Title & Badge
+                    // Antigravity / Topaz Brand Title
                     ui.label(egui::RichText::new("TOPAZ ADJUST").strong().size(16.0).color(egui::Color32::WHITE));
                     ui.label(egui::RichText::new("4.0").strong().size(13.0).color(egui::Color32::from_rgb(0, 210, 255)));
 
-                    ui.add_space(14.0);
+                    ui.add_space(16.0);
                     ui.separator();
                     ui.add_space(10.0);
 
@@ -312,64 +333,170 @@ impl eframe::App for AdjustApp {
             });
 
         // ==========================================
-        // 2. LEFT SIDEBAR: PRESET EXPLORER
+        // 2. BOTTOM ACTION BAR (APPLY / OK / CANCEL)
+        // ==========================================
+        egui::TopBottomPanel::bottom("bottom_bar")
+            .exact_height(44.0)
+            .show(ctx, |ui| {
+                ui.horizontal_centered(|ui| {
+                    ui.add_space(12.0);
+                    ui.label(egui::RichText::new(format!("Preset: {}", self.selected_preset_name)).strong().size(12.5).color(egui::Color32::from_rgb(0, 210, 255)));
+
+                    if !self.snapshots.is_empty() {
+                        ui.add_space(8.0);
+                        ui.label(egui::RichText::new(format!("({} Layer Stacked)", self.snapshots.len())).size(11.5).color(egui::Color32::from_rgb(160, 165, 180)));
+                    }
+
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        ui.add_space(12.0);
+
+                        // OK / Export Full Image
+                        if ui.button(format!("{} OK", ICON_CHECK)).on_hover_text("Export & save the full image").clicked() {
+                            if let Some(ref full_orig) = self.original_f32 {
+                                if let Some(path) = rfd::FileDialog::new()
+                                    .add_filter("PNG Image", &["png"])
+                                    .add_filter("JPEG Image", &["jpg", "jpeg"])
+                                    .save_file()
+                                {
+                                    let full_proc = process_image(full_orig, &self.params);
+                                    let _ = full_proc.to_rgb8().save(&path);
+                                }
+                            }
+                        }
+
+                        // CANCEL
+                        if ui.button(format!("{} Cancel", ICON_X)).on_hover_text("Revert all changes and restore original").clicked() {
+                            self.params = AdjustParams::default();
+                            self.selected_preset_name = "Neutral".to_string();
+                            self.snapshots.clear();
+                            self.is_dirty = true;
+                        }
+
+                        // APPLY BUTTON (#10 feature: Stack multiple effects in one session!)
+                        if ui.button(format!("{} Apply", ICON_APPLY)).on_hover_text("Bake current adjustment stack as a new baseline to apply additional effects on top!").clicked() {
+                            if let Some(ref proc) = self.preview_proc_f32 {
+                                self.snapshots.push(self.params.clone());
+                                self.preview_orig_f32 = Some(proc.clone());
+                                if let Some(ref full_orig) = self.original_f32 {
+                                    let full_proc = process_image(full_orig, &self.params);
+                                    self.original_f32 = Some(full_proc);
+                                }
+                                self.params = AdjustParams::default();
+                                self.selected_preset_name = "Neutral".to_string();
+                                self.orig_texture = None;
+                                self.is_dirty = true;
+                            }
+                        }
+
+                        // Snapshots Undo if stacked
+                        if !self.snapshots.is_empty() {
+                            if ui.button(format!("{} Undo Layer", ICON_HISTORY)).clicked() {
+                                self.snapshots.pop();
+                                self.is_dirty = true;
+                            }
+                        }
+                    });
+                });
+            });
+
+        // ==========================================
+        // 3. LEFT SIDEBAR: COLLECTIONS & PRESETS EXPLORER
         // ==========================================
         egui::SidePanel::left("left_preset_panel")
             .resizable(true)
-            .default_width(260.0)
-            .width_range(220.0..=340.0)
+            .default_width(280.0)
+            .width_range(240.0..=360.0)
             .show(ctx, |ui| {
                 ui.add_space(8.0);
+
+                // Collections Header
                 ui.horizontal(|ui| {
-                    ui.label(egui::RichText::new(format!("{} Presets", ICON_WAND)).strong().size(15.0));
+                    ui.label(egui::RichText::new("COLLECTIONS").strong().size(12.0).color(egui::Color32::from_rgb(160, 165, 180)));
+                });
+                ui.add_space(4.0);
+
+                // Collections list
+                let collection_names = [
+                    "All Collections",
+                    "Adjust 4 Preset List",
+                    "Classic Collection",
+                    "Vibrant Collection",
+                    "HDR Collection",
+                    "Stylized Collection",
+                    "Toned Collection",
+                    "Film Collection",
+                    "Favorites",
+                ];
+
+                egui::ComboBox::from_id_salt("collections_dropdown")
+                    .selected_text(&self.selected_collection)
+                    .width(ui.available_width() - 8.0)
+                    .show_ui(ui, |ui| {
+                        for col in &collection_names {
+                            ui.selectable_value(&mut self.selected_collection, col.to_string(), *col);
+                        }
+                    });
+
+                ui.add_space(8.0);
+                ui.separator();
+                ui.add_space(6.0);
+
+                // Preset Search Box
+                ui.horizontal(|ui| {
+                    ui.label(egui::RichText::new(ICON_SEARCH).size(13.0).color(egui::Color32::from_rgb(160, 165, 180)));
+                    ui.text_edit_singleline(&mut self.preset_search);
                 });
 
-                ui.add_space(4.0);
-                ui.text_edit_singleline(&mut self.preset_search);
-
+                ui.add_space(6.0);
                 ui.separator();
 
+                // Presets Scroll View
                 egui::ScrollArea::vertical().show(ui, |ui| {
-                    let mut categories: Vec<String> = self.presets
-                        .iter()
-                        .map(|p| p.category.clone())
-                        .collect();
-                    categories.sort();
-                    categories.dedup();
-
                     let query = self.preset_search.trim().to_lowercase();
 
-                    for cat in categories {
-                        let in_cat: Vec<_> = self.presets
-                            .iter()
-                            .filter(|p| p.category == cat)
-                            .filter(|p| query.is_empty() || p.name.to_lowercase().contains(&query) || p.description.to_lowercase().contains(&query))
-                            .cloned()
-                            .collect();
-
-                        if in_cat.is_empty() {
-                            continue;
-                        }
-
-                        ui.collapsing(egui::RichText::new(&cat).strong().size(13.0), |ui| {
-                            for preset in in_cat {
-                                let is_selected = self.selected_preset_name == preset.name;
-
-                                let response = ui.selectable_label(
-                                    is_selected,
-                                    egui::RichText::new(format!("  {}", preset.name))
-                                        .size(13.0)
-                                        .color(if is_selected { egui::Color32::from_rgb(0, 210, 255) } else { egui::Color32::from_rgb(220, 225, 235) }),
-                                );
-
-                                if response.clicked() {
-                                    self.params = preset.params.clone();
-                                    self.selected_preset_name = preset.name.clone();
-                                    self.is_dirty = true;
-                                }
-
-                                response.on_hover_text(&preset.description);
+                    let filtered_presets: Vec<Preset> = self.presets
+                        .iter()
+                        .filter(|p| {
+                            if self.selected_collection == "Favorites" {
+                                self.favorite_presets.contains(&p.name)
+                            } else if self.selected_collection == "All Collections" || self.selected_collection == "Adjust 4 Preset List" {
+                                true
+                            } else {
+                                p.category == self.selected_collection
                             }
+                        })
+                        .filter(|p| query.is_empty() || p.name.to_lowercase().contains(&query) || p.description.to_lowercase().contains(&query))
+                        .cloned()
+                        .collect();
+
+                    for preset in filtered_presets {
+                        let is_selected = self.selected_preset_name == preset.name;
+                        let is_fav = self.favorite_presets.contains(&preset.name);
+
+                        ui.horizontal(|ui| {
+                            // Favorite Star Toggle
+                            let star_icon = if is_fav { ICON_STAR_FILLED } else { ICON_STAR };
+                            let star_color = if is_fav { egui::Color32::from_rgb(255, 200, 50) } else { egui::Color32::from_rgb(90, 95, 110) };
+                            if ui.add(egui::Button::new(egui::RichText::new(star_icon).size(12.0).color(star_color)).frame(false)).clicked() {
+                                if is_fav {
+                                    self.favorite_presets.remove(&preset.name);
+                                } else {
+                                    self.favorite_presets.insert(preset.name.clone());
+                                }
+                            }
+
+                            // Preset Name Label
+                            let label_text = egui::RichText::new(&preset.name)
+                                .size(13.0)
+                                .color(if is_selected { egui::Color32::from_rgb(0, 210, 255) } else { egui::Color32::from_rgb(220, 225, 235) });
+
+                            let resp = ui.selectable_label(is_selected, label_text);
+                            if resp.clicked() {
+                                self.params = preset.params.clone();
+                                self.selected_preset_name = preset.name.clone();
+                                self.is_dirty = true;
+                            }
+                            resp.on_hover_text(&preset.description);
                         });
                     }
 
@@ -412,28 +539,65 @@ impl eframe::App for AdjustApp {
             });
 
         // ==========================================
-        // 3. RIGHT SIDEBAR: ADJUSTMENT CONTROLS
+        // 4. RIGHT SIDEBAR: NAVIGATE / LOUPE / HISTOGRAM & ADJUSTMENTS
         // ==========================================
         egui::SidePanel::right("right_adjustment_panel")
             .resizable(true)
             .default_width(340.0)
             .width_range(300.0..=480.0)
             .show(ctx, |ui| {
-                ui.add_space(8.0);
+                ui.add_space(6.0);
+
+                // Inspector Tabs: NAVIGATE | LOUPE | HISTOGRAM
                 ui.horizontal(|ui| {
-                    ui.label(egui::RichText::new(format!("{} Adjustments", ICON_ADJUSTMENTS)).strong().size(15.0));
+                    ui.selectable_value(&mut self.inspector_tab, InspectorTab::Navigate, "NAVIGATE");
+                    ui.selectable_value(&mut self.inspector_tab, InspectorTab::Loupe, "LOUPE");
+                    ui.selectable_value(&mut self.inspector_tab, InspectorTab::Histogram, "HISTOGRAM");
                 });
+                ui.add_space(4.0);
+
+                // Render Inspector Subview
+                match self.inspector_tab {
+                    InspectorTab::Navigate => {
+                        if let Some(ref nav_tex) = self.nav_texture {
+                            let nav_w = ui.available_width().max(100.0);
+                            let nav_h = (nav_w * 0.65).min(130.0);
+                            let (resp, painter) = ui.allocate_painter(egui::vec2(nav_w, nav_h), egui::Sense::hover());
+                            painter.image(nav_tex.id(), resp.rect, egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)), egui::Color32::WHITE);
+                            // Draw Navigator viewport crop box (cyan rectangle matching Topaz screenshot)
+                            let crop_box = egui::Rect::from_min_size(
+                                egui::pos2(resp.rect.min.x + resp.rect.width() * 0.25, resp.rect.min.y + 4.0),
+                                egui::vec2(resp.rect.width() * 0.50, resp.rect.height() - 8.0),
+                            );
+                            painter.rect_stroke(crop_box, 0.0, egui::Stroke::new(1.5_f32, egui::Color32::from_rgb(0, 210, 255)), egui::StrokeKind::Inside);
+                        }
+                    }
+                    InspectorTab::Loupe => {
+                        ui.label(egui::RichText::new("Loupe Zoom: 400% Target").size(12.0).color(egui::Color32::from_rgb(160, 165, 180)));
+                        if let Some(ref proc_tex) = self.proc_texture {
+                            let loupe_w = ui.available_width().max(100.0);
+                            let loupe_h = (loupe_w * 0.65).min(130.0);
+                            let (resp, painter) = ui.allocate_painter(egui::vec2(loupe_w, loupe_h), egui::Sense::hover());
+                            // Center 25% zoomed in
+                            let center_uv = egui::Rect::from_min_max(egui::pos2(0.35, 0.35), egui::pos2(0.65, 0.65));
+                            painter.image(proc_tex.id(), resp.rect, center_uv, egui::Color32::WHITE);
+                            painter.rect_stroke(resp.rect, 0.0, egui::Stroke::new(1.0_f32, egui::Color32::from_rgb(45, 48, 56)), egui::StrokeKind::Inside);
+                        }
+                    }
+                    InspectorTab::Histogram => {
+                        if let Some(ref hist) = self.histogram {
+                            render_histogram_modern(ui, hist);
+                        }
+                    }
+                }
+
+                ui.add_space(6.0);
                 ui.separator();
 
-                // Live Histogram Widget with Tabler Icon
-                if let Some(ref hist) = self.histogram {
-                    ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new(format!("{} Histogram", ICON_CHART_LINE)).size(12.0).color(egui::Color32::from_rgb(160, 165, 180)));
-                    });
-                    render_histogram_modern(ui, hist);
-                    ui.add_space(4.0);
-                    ui.separator();
-                }
+                ui.horizontal(|ui| {
+                    ui.label(egui::RichText::new("GLOBAL ADJUSTMENTS").strong().size(12.5).color(egui::Color32::WHITE));
+                });
+                ui.separator();
 
                 egui::ScrollArea::vertical().show(ui, |ui| {
                     // --- TAB 1: BASIC EXPOSURE ---
@@ -486,9 +650,10 @@ impl eframe::App for AdjustApp {
                         .body(|ui| {
                             let p = &mut self.params.details;
                             slider_row(ui, "Strength", &mut p.strength, -1.0..=3.0, 0.0, &mut self.is_dirty);
-                            slider_row(ui, "Detail Boost", &mut p.boost, 0.0..=3.0, 1.0, &mut self.is_dirty);
+                            slider_row(ui, "Detail Boost", &mut p.detail_boost, 0.0..=3.0, 1.0, &mut self.is_dirty);
                             slider_row(ui, "Threshold", &mut p.threshold, 0.0..=1.0, 0.10, &mut self.is_dirty);
-                            slider_row(ui, "Radius", &mut p.radius, 0.5..=10.0, 1.0, &mut self.is_dirty);
+                            slider_row(ui, "Radius", &mut p.radius, 0.5..=30.0, 1.0, &mut self.is_dirty);
+                            slider_row(ui, "Sharpen", &mut p.sharpen, 0.0..=2.0, 0.0, &mut self.is_dirty);
                             if ui.checkbox(&mut p.process_independently, "Process Details Independently").on_hover_text("Extracts detail from original un-tone-mapped image to avoid highlight blowout and halos.").changed() {
                                 self.is_dirty = true;
                             }
@@ -569,6 +734,13 @@ impl eframe::App for AdjustApp {
                             ui.label(egui::RichText::new("Film Grain:").strong().size(12.0));
                             slider_row(ui, "Amount", &mut p.grain.amount, 0.0..=1.0, 0.0, &mut self.is_dirty);
                             slider_row(ui, "Size", &mut p.grain.size, 0.5..=3.0, 1.0, &mut self.is_dirty);
+
+                            ui.add_space(4.0);
+                            ui.label(egui::RichText::new("Border:").strong().size(12.0));
+                            if ui.checkbox(&mut p.border.enabled, "Enable Border").changed() {
+                                self.is_dirty = true;
+                            }
+                            slider_row(ui, "Thickness", &mut p.border.thickness, 0.0..=0.15, 0.0, &mut self.is_dirty);
                         });
                     ui.separator();
 
@@ -577,7 +749,7 @@ impl eframe::App for AdjustApp {
             });
 
         // ==========================================
-        // 4. CENTER CANVAS VIEWPORT
+        // 5. CENTER CANVAS VIEWPORT
         // ==========================================
         egui::CentralPanel::default().show(ctx, |ui| {
             let available_size = ui.available_size();

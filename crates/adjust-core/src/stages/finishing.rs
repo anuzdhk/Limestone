@@ -95,7 +95,31 @@ pub fn apply_finishing(
             });
     }
 
-    // 4. Master Transparency Blending (blend with original)
+    // 4. Border (Frame)
+    if params.border.enabled && params.border.thickness > 0.0 {
+        let min_dim = width.min(height) as f32;
+        let border_px = (min_dim * params.border.thickness).round().max(1.0) as usize;
+        let [br, bg, bb] = params.border.color;
+
+        processed
+            .r
+            .par_chunks_mut(width)
+            .zip(processed.g.par_chunks_mut(width))
+            .zip(processed.b.par_chunks_mut(width))
+            .enumerate()
+            .for_each(|(y, ((row_r, row_g), row_b))| {
+                let is_top_bottom = y < border_px || y >= height - border_px;
+                for x in 0..width {
+                    if is_top_bottom || x < border_px || x >= width - border_px {
+                        row_r[x] = br;
+                        row_g[x] = bg;
+                        row_b[x] = bb;
+                    }
+                }
+            });
+    }
+
+    // 5. Master Transparency Blending (blend with original)
     if params.transparency > 0.0 {
         let t = params.transparency.clamp(0.0, 1.0);
         let eff = 1.0 - t;

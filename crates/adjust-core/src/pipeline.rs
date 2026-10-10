@@ -16,10 +16,8 @@ pub fn process_image(input: &RgbImageF32, params: &AdjustParams) -> RgbImageF32 
 
     // 1. Independent Detail Extraction:
     // If enabled, extract high frequencies from input luminance BEFORE tone-mapping
-    let pre_extracted_detail = if params.details.enabled
-        && params.details.strength != 0.0
-        && params.details.process_independently
-    {
+    let has_detail_op = params.details.enabled && (params.details.strength != 0.0 || params.details.sharpen != 0.0);
+    let pre_extracted_detail = if has_detail_op && params.details.process_independently {
         let y = input.compute_luminance();
         Some(extract_detail_layer(&y, input.width, input.height, params.details.radius))
     } else {
@@ -35,7 +33,7 @@ pub fn process_image(input: &RgbImageF32, params: &AdjustParams) -> RgbImageF32 
     // 4. Details Stage (Recombination or Dependent Extraction)
     if let Some(ref detail) = pre_extracted_detail {
         apply_detail_layer(&mut working, detail, &params.details);
-    } else if params.details.enabled && params.details.strength != 0.0 {
+    } else if has_detail_op {
         apply_details(&mut working, &params.details);
     }
 

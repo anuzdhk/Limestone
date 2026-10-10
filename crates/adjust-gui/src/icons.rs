@@ -14,7 +14,18 @@ pub const ICON_REFRESH: &str = "\u{eb13}";           // Reset
 pub const ICON_LAYOUT_COLUMNS: &str = "\u{ead4}";    // Split / Comparison
 pub const ICON_PHOTO: &str = "\u{eb0a}";             // Viewport
 pub const ICON_CHART_LINE: &str = "\u{ea5c}";        // Live Histogram
-pub const ICON_ADJUSTMENTS: &str = "\u{ec38}";       // Sliders & Adjustments
+pub const ICON_CHECK: &str = "\u{ea5e}";             // Apply / Done
+pub const ICON_X: &str = "\u{eb55}";                 // Cancel / Close
+pub const ICON_SEARCH: &str = "\u{eb1c}";            // Loupe / Search
+pub const ICON_STAR: &str = "\u{eb2c}";              // Favorite Preset
+pub const ICON_STAR_FILLED: &str = "\u{f6f8}";       // Favorite Preset Active
+pub const ICON_COMPASS: &str = "\u{ea79}";           // Navigate
+pub const ICON_ZOOM_IN: &str = "\u{eb54}";           // Zoom In
+pub const ICON_ZOOM_OUT: &str = "\u{eb53}";          // Zoom Out
+pub const ICON_HISTORY: &str = "\u{eaee}";           // History / Snapshot
+pub const ICON_BRUSH: &str = "\u{ea42}";             // Local Adjustments Brush
+pub const ICON_APPLY: &str = "\u{f15f}";             // Apply Button (Stacking effects)
+pub const ICON_BOLT: &str = "\u{ea37}";              // Speed / GPU latency
 
 pub fn setup_tabler_fonts(ctx: &egui::Context) {
     let mut fonts = egui::FontDefinitions::default();

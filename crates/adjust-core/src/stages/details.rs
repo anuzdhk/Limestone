@@ -30,13 +30,18 @@ pub fn apply_detail_layer(
     detail: &[f32],
     params: &DetailsParams,
 ) {
-    if !params.enabled || params.strength == 0.0 {
+    if !params.enabled {
         return;
     }
 
     let strength = params.strength * 1.5;
-    let boost = params.boost;
+    let boost = params.detail_boost;
     let threshold = (params.threshold * 0.15).max(0.0005);
+    let sharpen = params.sharpen;
+
+    if strength == 0.0 && sharpen == 0.0 {
+        return;
+    }
 
     img.r
         .par_iter_mut()
@@ -73,7 +78,8 @@ pub fn apply_detail_layer(
                 1.0
             };
 
-            let delta = d * strength * amp * weight;
+            // Combine detail layer with unsharp mask sharpen boost
+            let delta = d * (strength * amp * weight + sharpen * 0.8);
 
             *r = (*r + delta).clamp(0.0, 1.0);
             *g = (*g + delta).clamp(0.0, 1.0);
@@ -82,7 +88,7 @@ pub fn apply_detail_layer(
 }
 
 pub fn apply_details(img: &mut RgbImageF32, params: &DetailsParams) {
-    if !params.enabled || params.strength == 0.0 {
+    if !params.enabled || (params.strength == 0.0 && params.sharpen == 0.0) {
         return;
     }
 

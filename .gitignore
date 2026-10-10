@@ -1,3 +1,4 @@
 /target/
+crates/cargo-target/
 **/*.rs.bk
 *.pdb

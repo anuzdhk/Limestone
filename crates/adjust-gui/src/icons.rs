@@ -26,6 +26,15 @@ pub const ICON_HISTORY: &str = "\u{eaee}";           // History / Snapshot
 pub const ICON_BRUSH: &str = "\u{ea42}";             // Local Adjustments Brush
 pub const ICON_APPLY: &str = "\u{f15f}";             // Apply Button (Stacking effects)
 pub const ICON_BOLT: &str = "\u{ea37}";              // Speed / GPU latency
+pub const ICON_GRIP: &str = "\u{eaeb}";              // Grip Vertical / Handle
+pub const ICON_ARROW_BACK_UP: &str = "\u{ea0c}";     // Undo
+pub const ICON_ARROW_FORWARD_UP: &str = "\u{ea0d}";  // Redo
+pub const ICON_CHEVRON_DOWN: &str = "\u{ea5f}";      // Accordion expanded
+pub const ICON_CHEVRON_RIGHT: &str = "\u{ea61}";     // Accordion collapsed
+pub const ICON_EYE_OFF: &str = "\u{ea99}";           // Bypass stage
+pub const ICON_HELP: &str = "\u{ea9f}";              // Shortcuts cheat sheet
+pub const ICON_UPLOAD: &str = "\u{eb47}";            // Drop zone upload
+pub const ICON_KEYBOARD: &str = "\u{eab5}";          // Keyboard shortcuts
 
 pub fn setup_tabler_fonts(ctx: &egui::Context) {
     let mut fonts = egui::FontDefinitions::default();

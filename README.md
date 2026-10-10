@@ -1,4 +1,4 @@
-# Topaz Adjust 4.0 — High-Performance Rust DSP Engine & GUI
+# Limestone v0.4
 
 [![Rust](https://img.shields.io/badge/rust-1.80%2B-orange.svg)](https://www.rust-lang.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)

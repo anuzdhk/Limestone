@@ -1,0 +1,72 @@
+{
+  "name": "Spicify",
+  "category": "HDR & Vibrant",
+  "description": "Signature punchy look with enhanced dynamic range, high micro-contrast, and vibrant colors.",
+  "params": {
+    "basic_exposure": {
+      "enabled": true,
+      "brightness": 0.0,
+      "contrast": 0.12,
+      "boost_blacks": 0.08,
+      "boost_whites": 0.05
+    },
+    "adaptive_exposure": {
+      "enabled": true,
+      "adaptive_exposure": 1.25,
+      "regions": 12,
+      "contrast": 0.18,
+      "brightness": 0.04,
+      "protect_highlights": 0.35,
+      "protect_shadows": 0.25
+    },
+    "details": {
+      "enabled": true,
+      "strength": 1.4,
+      "boost": 1.2,
+      "threshold": 0.08,
+      "radius": 1.2,
+      "process_independently": true
+    },
+    "color": {
+      "enabled": true,
+      "adaptive_saturation": 0.65,
+      "color_regions": 10,
+      "saturation": 0.1,
+      "saturation_boost": 1.15,
+      "hue": 0.0
+    },
+    "noise": {
+      "enabled": true,
+      "suppression": 0.15,
+      "amount": 0.4
+    },
+    "curve": {
+      "enabled": false,
+      "points": [
+        {
+          "x": 0.0,
+          "y": 0.0
+        },
+        {
+          "x": 1.0,
+          "y": 1.0
+        }
+      ]
+    },
+    "finishing": {
+      "enabled": true,
+      "transparency": 0.0,
+      "warmth": 0.05,
+      "vignette": {
+        "amount": -0.15,
+        "size": 0.6,
+        "transition": 0.5,
+        "roundness": 0.0
+      },
+      "grain": {
+        "amount": 0.0,
+        "size": 1.0
+      }
+    }
+  }
+}

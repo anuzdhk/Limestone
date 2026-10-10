@@ -1,0 +1,72 @@
+{
+  "name": "Painting",
+  "category": "Stylized & Creative",
+  "description": "Stylized illustrative look with broad edge halos and saturated oil-painting tones.",
+  "params": {
+    "basic_exposure": {
+      "enabled": true,
+      "brightness": 0.05,
+      "contrast": 0.15,
+      "boost_blacks": 0.0,
+      "boost_whites": 0.05
+    },
+    "adaptive_exposure": {
+      "enabled": true,
+      "adaptive_exposure": 1.4,
+      "regions": 18,
+      "contrast": 0.2,
+      "brightness": 0.05,
+      "protect_highlights": 0.3,
+      "protect_shadows": 0.3
+    },
+    "details": {
+      "enabled": true,
+      "strength": 2.5,
+      "boost": 1.8,
+      "threshold": 0.04,
+      "radius": 2.8,
+      "process_independently": true
+    },
+    "color": {
+      "enabled": true,
+      "adaptive_saturation": 0.85,
+      "color_regions": 12,
+      "saturation": 0.25,
+      "saturation_boost": 1.3,
+      "hue": 0.0
+    },
+    "noise": {
+      "enabled": true,
+      "suppression": 0.3,
+      "amount": 0.6
+    },
+    "curve": {
+      "enabled": false,
+      "points": [
+        {
+          "x": 0.0,
+          "y": 0.0
+        },
+        {
+          "x": 1.0,
+          "y": 1.0
+        }
+      ]
+    },
+    "finishing": {
+      "enabled": true,
+      "transparency": 0.0,
+      "warmth": 0.1,
+      "vignette": {
+        "amount": -0.2,
+        "size": 0.55,
+        "transition": 0.45,
+        "roundness": 0.3
+      },
+      "grain": {
+        "amount": 0.0,
+        "size": 1.0
+      }
+    }
+  }
+}

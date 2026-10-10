@@ -1,0 +1,80 @@
+{
+  "name": "Dramatic",
+  "category": "HDR & Stylized",
+  "description": "Cinematic, gritty contrast with extreme micro-details and desaturated tones.",
+  "params": {
+    "basic_exposure": {
+      "enabled": true,
+      "brightness": -0.05,
+      "contrast": 0.25,
+      "boost_blacks": 0.2,
+      "boost_whites": 0.1
+    },
+    "adaptive_exposure": {
+      "enabled": true,
+      "adaptive_exposure": 0.95,
+      "regions": 16,
+      "contrast": 0.3,
+      "brightness": -0.05,
+      "protect_highlights": 0.4,
+      "protect_shadows": 0.3
+    },
+    "details": {
+      "enabled": true,
+      "strength": 2.1,
+      "boost": 1.5,
+      "threshold": 0.06,
+      "radius": 1.5,
+      "process_independently": true
+    },
+    "color": {
+      "enabled": true,
+      "adaptive_saturation": -0.2,
+      "color_regions": 10,
+      "saturation": -0.35,
+      "saturation_boost": 0.8,
+      "hue": 0.0
+    },
+    "noise": {
+      "enabled": true,
+      "suppression": 0.1,
+      "amount": 0.3
+    },
+    "curve": {
+      "enabled": true,
+      "points": [
+        {
+          "x": 0.0,
+          "y": 0.0
+        },
+        {
+          "x": 0.3,
+          "y": 0.22
+        },
+        {
+          "x": 0.7,
+          "y": 0.78
+        },
+        {
+          "x": 1.0,
+          "y": 1.0
+        }
+      ]
+    },
+    "finishing": {
+      "enabled": true,
+      "transparency": 0.0,
+      "warmth": -0.08,
+      "vignette": {
+        "amount": -0.3,
+        "size": 0.5,
+        "transition": 0.4,
+        "roundness": 0.2
+      },
+      "grain": {
+        "amount": 0.15,
+        "size": 1.0
+      }
+    }
+  }
+}

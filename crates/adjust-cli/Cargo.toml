@@ -1,0 +1,11 @@
+[package]
+name = "adjust-cli"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+adjust-core = { path = "../adjust-core" }
+clap = { workspace = true }
+image = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }

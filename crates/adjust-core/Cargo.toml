@@ -1,0 +1,14 @@
+[package]
+name = "adjust-core"
+version = "0.1.0"
+edition = "2021"
+authors = ["Androp Contributors"]
+description = "Core DSP and image processing engine for Topaz Adjust 4.0 clone"
+
+[dependencies]
+rayon = { workspace = true }
+image = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+[dev-dependencies]

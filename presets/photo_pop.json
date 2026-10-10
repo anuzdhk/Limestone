@@ -1,0 +1,72 @@
+{
+  "name": "Photo Pop",
+  "category": "Exposure & Detail",
+  "description": "Clean, natural enhancement bringing clarity, brightness, and color vibrance without looking overcooked.",
+  "params": {
+    "basic_exposure": {
+      "enabled": true,
+      "brightness": 0.02,
+      "contrast": 0.08,
+      "boost_blacks": 0.05,
+      "boost_whites": 0.03
+    },
+    "adaptive_exposure": {
+      "enabled": true,
+      "adaptive_exposure": 0.45,
+      "regions": 8,
+      "contrast": 0.08,
+      "brightness": 0.02,
+      "protect_highlights": 0.2,
+      "protect_shadows": 0.15
+    },
+    "details": {
+      "enabled": true,
+      "strength": 0.65,
+      "boost": 1.05,
+      "threshold": 0.12,
+      "radius": 1.0,
+      "process_independently": true
+    },
+    "color": {
+      "enabled": true,
+      "adaptive_saturation": 0.35,
+      "color_regions": 10,
+      "saturation": 0.05,
+      "saturation_boost": 1.1,
+      "hue": 0.0
+    },
+    "noise": {
+      "enabled": true,
+      "suppression": 0.0,
+      "amount": 0.5
+    },
+    "curve": {
+      "enabled": false,
+      "points": [
+        {
+          "x": 0.0,
+          "y": 0.0
+        },
+        {
+          "x": 1.0,
+          "y": 1.0
+        }
+      ]
+    },
+    "finishing": {
+      "enabled": true,
+      "transparency": 0.0,
+      "warmth": 0.0,
+      "vignette": {
+        "amount": 0.0,
+        "size": 0.5,
+        "transition": 0.5,
+        "roundness": 0.0
+      },
+      "grain": {
+        "amount": 0.0,
+        "size": 1.0
+      }
+    }
+  }
+}

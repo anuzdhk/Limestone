@@ -21,6 +21,10 @@ pub fn render_inspector_panel(
 ) {
     ui.add_space(SPACE_4);
 
+    let card_fill = theme_surface_card(ui.visuals());
+    let border_col = theme_border(ui.visuals());
+    let sec_col = theme_text_secondary(ui.visuals());
+
     // Segmented Control for Tabs: NAVIGATE | LOUPE | HISTOGRAM
     ui.horizontal(|ui| {
         let tabs = [
@@ -40,7 +44,7 @@ pub fn render_inspector_panel(
                     egui::RichText::new(label)
                         .size(11.0)
                         .strong()
-                        .color(if is_active { ACCENT } else { TEXT_SECONDARY }),
+                        .color(if is_active { ACCENT } else { sec_col }),
                 ),
             );
             if btn.clicked() {
@@ -54,8 +58,8 @@ pub fn render_inspector_panel(
     // Fixed Height Container Card (140px for comfortable photo proportions)
     let card_height = 140.0;
     let card_frame = egui::Frame::new()
-        .fill(SURFACE_CARD)
-        .stroke(egui::Stroke::new(1.0_f32, BORDER_SUBTLE))
+        .fill(card_fill)
+        .stroke(egui::Stroke::new(1.0_f32, border_col))
         .corner_radius(RADIUS_CONTROL)
         .inner_margin(egui::Margin::same(6));
 
@@ -248,13 +252,15 @@ pub fn render_inspector_panel(
 
 fn render_empty_placeholder(ui: &mut Ui, width: f32, height: f32, message: &str) {
     let (resp, painter) = ui.allocate_painter(egui::vec2(width, height), egui::Sense::hover());
-    painter.rect_filled(resp.rect, RADIUS_CONTROL, SURFACE_PANEL);
+    let panel_bg = theme_surface_panel(ui.visuals());
+    let text_mut = theme_text_muted(ui.visuals());
+    painter.rect_filled(resp.rect, RADIUS_CONTROL, panel_bg);
     painter.text(
         resp.rect.center(),
         egui::Align2::CENTER_CENTER,
         message,
         egui::FontId::proportional(11.0),
-        TEXT_MUTED,
+        text_mut,
     );
 }
 
@@ -262,8 +268,12 @@ fn render_histogram_graph(ui: &mut Ui, hist: &HistogramData, width: f32, height:
     let (response, painter) = ui.allocate_painter(egui::vec2(width, height), egui::Sense::hover());
     let rect = response.rect;
 
+    let panel_bg = theme_surface_panel(ui.visuals());
+    let text_mut = theme_text_muted(ui.visuals());
+    let border_col = theme_border(ui.visuals());
+
     // Background fill
-    painter.rect_filled(rect, RADIUS_CONTROL, SURFACE_PANEL);
+    painter.rect_filled(rect, RADIUS_CONTROL, panel_bg);
 
     // Max values for normalization
     let max_val = hist.lum.iter().copied().max().unwrap_or(1).max(1) as f32;
@@ -273,11 +283,17 @@ fn render_histogram_graph(ui: &mut Ui, hist: &HistogramData, width: f32, height:
         let x = rect.min.x + factor * rect.width();
         painter.line_segment(
             [egui::pos2(x, rect.min.y + 2.0), egui::pos2(x, rect.max.y - 2.0)],
-            egui::Stroke::new(1.0_f32, Color32::from_rgb(32, 35, 42)),
+            egui::Stroke::new(1.0_f32, border_col),
         );
     }
 
     // Draw Luminance spline/bars
+    let bar_color = if ui.visuals().dark_mode {
+        Color32::from_rgba_unmultiplied(232, 234, 240, 150)
+    } else {
+        Color32::from_rgba_unmultiplied(40, 48, 60, 180)
+    };
+
     for i in 0..255 {
         let x0 = rect.min.x + (i as f32 / 255.0) * rect.width();
         let x1 = rect.min.x + ((i + 1) as f32 / 255.0) * rect.width();
@@ -288,7 +304,7 @@ fn render_histogram_graph(ui: &mut Ui, hist: &HistogramData, width: f32, height:
 
         painter.line_segment(
             [egui::pos2(x0, y0), egui::pos2(x1, y1)],
-            egui::Stroke::new(1.0_f32, Color32::from_rgba_unmultiplied(232, 234, 240, 150)),
+            egui::Stroke::new(1.0_f32, bar_color),
         );
     }
 
@@ -298,13 +314,13 @@ fn render_histogram_graph(ui: &mut Ui, hist: &HistogramData, width: f32, height:
         egui::Align2::LEFT_BOTTOM,
         "0",
         egui::FontId::monospace(9.0),
-        TEXT_MUTED,
+        text_mut,
     );
     painter.text(
         egui::pos2(rect.max.x - 4.0, rect.max.y - 4.0),
         egui::Align2::RIGHT_BOTTOM,
         "255",
         egui::FontId::monospace(9.0),
-        TEXT_MUTED,
+        text_mut,
     );
 }

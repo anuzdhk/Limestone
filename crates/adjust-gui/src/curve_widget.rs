@@ -42,9 +42,11 @@ pub fn render_curve_editor(
     let (response, painter) = ui.allocate_painter(egui::vec2(width, height), egui::Sense::click_and_drag());
     let rect = response.rect;
 
-    // 1. Dark Canvas Background
-    painter.rect_filled(rect, RADIUS_CONTROL, SURFACE_CARD);
-    painter.rect_stroke(rect, RADIUS_CONTROL, Stroke::new(1.0, BORDER_SUBTLE), egui::StrokeKind::Inside);
+    // 1. Canvas Background
+    let card_bg = theme_surface_card(ui.visuals());
+    let border_col = theme_border(ui.visuals());
+    painter.rect_filled(rect, RADIUS_CONTROL, card_bg);
+    painter.rect_stroke(rect, RADIUS_CONTROL, Stroke::new(1.0, border_col), egui::StrokeKind::Inside);
 
     // 2. Faint Background Histogram
     if let Some(h) = hist {
@@ -56,7 +58,11 @@ pub fn render_curve_editor(
         };
 
         let hist_tint = match active_channel {
-            CurveChannel::Rgb => Color32::from_rgba_unmultiplied(220, 225, 235, 24),
+            CurveChannel::Rgb => if ui.visuals().dark_mode {
+                Color32::from_rgba_unmultiplied(220, 225, 235, 24)
+            } else {
+                Color32::from_rgba_unmultiplied(60, 70, 90, 28)
+            },
             CurveChannel::Red => Color32::from_rgba_unmultiplied(255, 100, 100, 32),
             CurveChannel::Green => Color32::from_rgba_unmultiplied(100, 255, 120, 32),
             CurveChannel::Blue => Color32::from_rgba_unmultiplied(100, 180, 255, 32),
@@ -82,12 +88,17 @@ pub fn render_curve_editor(
     }
 
     // 3. Grid Lines (25% divisions)
-    let grid_stroke = Stroke::new(1.0, Color32::from_rgba_unmultiplied(255, 255, 255, 18));
+    let grid_color = if ui.visuals().dark_mode {
+        Color32::from_rgba_unmultiplied(255, 255, 255, 18)
+    } else {
+        Color32::from_rgba_unmultiplied(0, 0, 0, 22)
+    };
+    let grid_stroke = Stroke::new(1.0, grid_color);
     for step in [0.25, 0.50, 0.75] {
         let gx = rect.min.x + step * rect.width();
         let gy = rect.max.y - step * rect.height();
         painter.line_segment([egui::pos2(gx, rect.min.y), egui::pos2(gx, rect.max.y)], grid_stroke);
-        painter.line_segment([egui::pos2(rect.min.x, gy), egui::pos2(rect.max.x, gy)], grid_stroke);
+        painter.line_segment([egui::pos2(rect.min.x, gy), egui::pos2(rect.max.y, gy)], grid_stroke);
     }
 
     // 4. Diagonal 1:1 Reference Line

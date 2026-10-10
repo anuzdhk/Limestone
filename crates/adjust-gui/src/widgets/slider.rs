@@ -16,6 +16,8 @@ pub fn precision_slider_row(
     is_dirty: &mut bool,
     tooltip: &str,
 ) {
+    let sec_col = theme_text_secondary(ui.visuals());
+
     ui.horizontal(|ui| {
         // Label on left with tooltip
         let label_response = ui.add_sized(
@@ -23,7 +25,7 @@ pub fn precision_slider_row(
             egui::Label::new(
                 egui::RichText::new(label)
                     .size(12.0)
-                    .color(TEXT_SECONDARY),
+                    .color(sec_col),
             ),
         );
         if !tooltip.is_empty() {
@@ -89,13 +91,15 @@ pub fn precision_slider_u32(
     let start = *range.start() as f32;
     let end = *range.end() as f32;
 
+    let sec_col = theme_text_secondary(ui.visuals());
+
     ui.horizontal(|ui| {
         let label_response = ui.add_sized(
             [96.0, 18.0],
             egui::Label::new(
                 egui::RichText::new(label)
                     .size(12.0)
-                    .color(TEXT_SECONDARY),
+                    .color(sec_col),
             ),
         );
         if !tooltip.is_empty() {

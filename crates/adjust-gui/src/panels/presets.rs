@@ -3,11 +3,13 @@ use crate::theme::*;
 use adjust_core::Preset;
 use eframe::egui::{self, Color32, Ui};
 use std::collections::HashSet;
+use std::path::PathBuf;
 
 pub struct PresetPanelResponse {
     pub selected_preset: Option<Preset>,
     pub save_custom_clicked: bool,
     pub load_custom_clicked: bool,
+    pub open_recent_path: Option<PathBuf>,
 }
 
 pub fn render_presets_sidebar(
@@ -18,12 +20,19 @@ pub fn render_presets_sidebar(
     preset_search: &mut String,
     favorite_presets: &mut HashSet<String>,
     sample_preview_texture: Option<&egui::TextureHandle>,
+    recent_files: &[PathBuf],
 ) -> PresetPanelResponse {
     let mut result = PresetPanelResponse {
         selected_preset: None,
         save_custom_clicked: false,
         load_custom_clicked: false,
+        open_recent_path: None,
     };
+
+    let text_prim = theme_text_primary(ui.visuals());
+    let text_sec = theme_text_secondary(ui.visuals());
+    let text_mut = theme_text_muted(ui.visuals());
+    let border_col = theme_border(ui.visuals());
 
     ui.add_space(SPACE_8);
 
@@ -33,15 +42,16 @@ pub fn render_presets_sidebar(
             egui::RichText::new("PRESETS")
                 .strong()
                 .size(13.0)
-                .color(TEXT_SECONDARY),
+                .color(text_sec),
         );
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             let fav_active = selected_collection.as_str() == "Favorites";
             let fav_btn = egui::Button::new(
                 egui::RichText::new(if fav_active { ICON_STAR_FILLED } else { ICON_STAR })
                     .size(13.0)
-                    .color(if fav_active { ACCENT_STAR } else { TEXT_SECONDARY }),
+                    .color(if fav_active { ACCENT_STAR } else { text_sec }),
             )
+            .min_size(egui::vec2(26.0, BTN_HEIGHT_SM))
             .frame(false);
             if ui.add(fav_btn).on_hover_text("Filter starred favorites").clicked() {
                 if fav_active {
@@ -125,10 +135,13 @@ pub fn render_presets_sidebar(
                     ui.label(
                         egui::RichText::new("No presets match")
                             .size(13.0)
-                            .color(TEXT_MUTED),
+                            .color(text_mut),
                     );
                 });
             }
+
+            let card_fill = theme_surface_card(ui.visuals());
+            let raised_fill = theme_surface_raised(ui.visuals());
 
             for preset in filtered_presets {
                 let is_selected = selected_preset_name == preset.name;
@@ -136,7 +149,7 @@ pub fn render_presets_sidebar(
 
                 let _item_resp = egui::Frame::new()
                     .fill(if is_selected {
-                        SURFACE_CARD
+                        card_fill
                     } else {
                         Color32::TRANSPARENT
                     })
@@ -154,7 +167,7 @@ pub fn render_presets_sidebar(
                                 ui.add_space(SPACE_8);
                             }
 
-                            // Optional tiny preview thumbnail
+                            // Tiny preview thumbnail
                             if let Some(tex) = sample_preview_texture {
                                 let (thumb_rect, painter) =
                                     ui.allocate_painter(egui::vec2(28.0, 20.0), egui::Sense::hover());
@@ -167,7 +180,7 @@ pub fn render_presets_sidebar(
                                 painter.rect_stroke(
                                     thumb_rect.rect,
                                     2.0,
-                                    egui::Stroke::new(1.0_f32, BORDER_SUBTLE),
+                                    egui::Stroke::new(1.0_f32, border_col),
                                     egui::StrokeKind::Inside,
                                 );
                             }
@@ -178,7 +191,7 @@ pub fn render_presets_sidebar(
                                 .color(if is_selected {
                                     ACCENT
                                 } else {
-                                    TEXT_PRIMARY
+                                    text_prim
                                 });
 
                             let label_resp = ui.selectable_label(is_selected, name_label);
@@ -199,7 +212,7 @@ pub fn render_presets_sidebar(
                                     .color(if is_fav {
                                         ACCENT_STAR
                                     } else {
-                                        TEXT_MUTED
+                                        text_mut
                                     }),
                                 )
                                 .frame(false);
@@ -220,21 +233,50 @@ pub fn render_presets_sidebar(
             ui.separator();
             ui.add_space(SPACE_8);
 
+            // Recent Files Section
+            if !recent_files.is_empty() {
+                ui.label(
+                    egui::RichText::new("RECENT FILES")
+                        .size(11.0)
+                        .strong()
+                        .color(text_sec),
+                );
+                ui.add_space(SPACE_4);
+                for path in recent_files.iter().take(5) {
+                    let file_name = path
+                        .file_name()
+                        .map(|n| n.to_string_lossy().to_string())
+                        .unwrap_or_else(|| "Image".to_string());
+                    let btn_recent = egui::Button::new(
+                        egui::RichText::new(format!("{} {}", ICON_PHOTO, file_name))
+                            .size(11.5)
+                            .color(text_sec),
+                    )
+                    .frame(false);
+                    if ui.add(btn_recent).on_hover_text(path.to_string_lossy()).clicked() {
+                        result.open_recent_path = Some(path.clone());
+                    }
+                }
+                ui.add_space(SPACE_12);
+                ui.separator();
+                ui.add_space(SPACE_8);
+            }
+
             // Custom Preset Management Buttons
             ui.horizontal(|ui| {
-                if ui
-                    .button(format!("{} Save...", ICON_DEVICE_FLOPPY))
-                    .on_hover_text("Save current settings as a JSON preset")
-                    .clicked()
-                {
+                let btn_save = egui::Button::new(
+                    egui::RichText::new(format!("{} Save...", ICON_DEVICE_FLOPPY)).size(12.0),
+                )
+                .min_size(egui::vec2(90.0, BTN_HEIGHT_MD));
+                if ui.add(btn_save).on_hover_text("Save current settings as a JSON preset").clicked() {
                     result.save_custom_clicked = true;
                 }
 
-                if ui
-                    .button(format!("{} Load...", ICON_UPLOAD))
-                    .on_hover_text("Load preset from JSON file")
-                    .clicked()
-                {
+                let btn_load = egui::Button::new(
+                    egui::RichText::new(format!("{} Load...", ICON_UPLOAD)).size(12.0),
+                )
+                .min_size(egui::vec2(90.0, BTN_HEIGHT_MD));
+                if ui.add(btn_load).on_hover_text("Load preset from JSON file").clicked() {
                     result.load_custom_clicked = true;
                 }
             });

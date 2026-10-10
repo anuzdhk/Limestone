@@ -35,6 +35,11 @@ pub const ICON_EYE_OFF: &str = "\u{ea99}";           // Bypass stage
 pub const ICON_HELP: &str = "\u{ea9f}";              // Shortcuts cheat sheet
 pub const ICON_UPLOAD: &str = "\u{eb47}";            // Drop zone upload
 pub const ICON_KEYBOARD: &str = "\u{eab5}";          // Keyboard shortcuts
+pub const ICON_SETTINGS: &str = "\u{eb20}";          // Settings / Preferences
+pub const ICON_CLIPBOARD: &str = "\u{ea70}";         // Paste / Clipboard
+pub const ICON_CPU: &str = "\u{ea85}";               // Compute / Hardware Acceleration
+pub const ICON_WORLD: &str = "\u{eb54}";             // Language / Globe
+pub const ICON_SLIDERS: &str = "\u{eb28}";           // Sliders / Opacity settings
 
 pub fn setup_tabler_fonts(ctx: &egui::Context) {
     let mut fonts = egui::FontDefinitions::default();

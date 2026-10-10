@@ -53,8 +53,10 @@ pub fn render_adjustments_accordion(
     }
     state.show_body_unindented(ui, |ui| {
         ui.add_space(crate::theme::SPACE_4);
+        let panel_bg = crate::theme::theme_surface_panel(ui.visuals());
+        let sec_text = crate::theme::theme_text_secondary(ui.visuals());
         egui::Frame::new()
-            .fill(crate::theme::SURFACE_PANEL)
+            .fill(panel_bg)
             .inner_margin(egui::Margin::symmetric(4, 4))
             .show(ui, |ui| {
                 let p = &mut params.basic_exposure;
@@ -122,8 +124,10 @@ pub fn render_adjustments_accordion(
     }
     state.show_body_unindented(ui, |ui| {
         ui.add_space(crate::theme::SPACE_4);
+        let panel_bg = crate::theme::theme_surface_panel(ui.visuals());
+        let sec_text = crate::theme::theme_text_secondary(ui.visuals());
         egui::Frame::new()
-            .fill(crate::theme::SURFACE_PANEL)
+            .fill(panel_bg)
             .inner_margin(egui::Margin::symmetric(4, 4))
             .show(ui, |ui| {
                 let p = &mut params.adaptive_exposure;
@@ -209,8 +213,10 @@ pub fn render_adjustments_accordion(
     }
     state.show_body_unindented(ui, |ui| {
         ui.add_space(crate::theme::SPACE_4);
+        let panel_bg = crate::theme::theme_surface_panel(ui.visuals());
+        let sec_text = crate::theme::theme_text_secondary(ui.visuals());
         egui::Frame::new()
-            .fill(crate::theme::SURFACE_PANEL)
+            .fill(panel_bg)
             .inner_margin(egui::Margin::symmetric(4, 4))
             .show(ui, |ui| {
                 let p = &mut params.details;
@@ -301,8 +307,10 @@ pub fn render_adjustments_accordion(
     }
     state.show_body_unindented(ui, |ui| {
         ui.add_space(crate::theme::SPACE_4);
+        let panel_bg = crate::theme::theme_surface_panel(ui.visuals());
+        let sec_text = crate::theme::theme_text_secondary(ui.visuals());
         egui::Frame::new()
-            .fill(crate::theme::SURFACE_PANEL)
+            .fill(panel_bg)
             .inner_margin(egui::Margin::symmetric(4, 4))
             .show(ui, |ui| {
                 let p = &mut params.color;
@@ -379,8 +387,10 @@ pub fn render_adjustments_accordion(
     }
     state.show_body_unindented(ui, |ui| {
         ui.add_space(crate::theme::SPACE_4);
+        let panel_bg = crate::theme::theme_surface_panel(ui.visuals());
+        let sec_text = crate::theme::theme_text_secondary(ui.visuals());
         egui::Frame::new()
-            .fill(crate::theme::SURFACE_PANEL)
+            .fill(panel_bg)
             .inner_margin(egui::Margin::symmetric(4, 4))
             .show(ui, |ui| {
                 let p = &mut params.noise;
@@ -430,8 +440,10 @@ pub fn render_adjustments_accordion(
     }
     state.show_body_unindented(ui, |ui| {
         ui.add_space(crate::theme::SPACE_4);
+        let panel_bg = crate::theme::theme_surface_panel(ui.visuals());
+        let sec_text = crate::theme::theme_text_secondary(ui.visuals());
         egui::Frame::new()
-            .fill(crate::theme::SURFACE_PANEL)
+            .fill(panel_bg)
             .inner_margin(egui::Margin::symmetric(4, 4))
             .show(ui, |ui| {
                 render_curve_editor(ui, &mut params.curve, histogram, active_channel, is_dirty);
@@ -463,8 +475,10 @@ pub fn render_adjustments_accordion(
     }
     state.show_body_unindented(ui, |ui| {
         ui.add_space(crate::theme::SPACE_4);
+        let panel_bg = crate::theme::theme_surface_panel(ui.visuals());
+        let sec_text = crate::theme::theme_text_secondary(ui.visuals());
         egui::Frame::new()
-            .fill(crate::theme::SURFACE_PANEL)
+            .fill(panel_bg)
             .inner_margin(egui::Margin::symmetric(4, 4))
             .show(ui, |ui| {
                 let p = &mut params.finishing;
@@ -588,9 +602,11 @@ pub fn render_adjustments_accordion(
     // ----------------------------------------------------
     // Sticky Footer Section: Layer Stack & Apply / Cancel Actions
     // ----------------------------------------------------
+    let footer_bg = crate::theme::theme_surface_card(ui.visuals());
+    let border_col = crate::theme::theme_border(ui.visuals());
     egui::Frame::new()
-        .fill(crate::theme::SURFACE_PANEL)
-        .stroke(egui::Stroke::new(1.0_f32, crate::theme::BORDER_SUBTLE))
+        .fill(footer_bg)
+        .stroke(egui::Stroke::new(1.0_f32, border_col))
         .corner_radius(crate::theme::RADIUS_CONTROL)
         .inner_margin(egui::Margin::symmetric(12, 10))
         .show(ui, |ui| {
@@ -622,16 +638,20 @@ pub fn render_adjustments_accordion(
             }
 
             ui.horizontal(|ui| {
+                let btn_reset = egui::Button::new("Reset All")
+                    .min_size(egui::vec2(80.0, crate::theme::BTN_HEIGHT_MD));
                 if ui
-                    .button("Reset All")
+                    .add(btn_reset)
                     .on_hover_text("Revert all sliders and curves to defaults")
                     .clicked()
                 {
                     resp.reset_all_clicked = true;
                 }
 
+                let btn_cancel = egui::Button::new("Cancel")
+                    .min_size(egui::vec2(70.0, crate::theme::BTN_HEIGHT_MD));
                 if ui
-                    .button("Cancel")
+                    .add(btn_cancel)
                     .on_hover_text("Clear adjustment stack and reload base")
                     .clicked()
                 {
@@ -644,7 +664,8 @@ pub fn render_adjustments_accordion(
                             .strong()
                             .color(Color32::BLACK),
                     )
-                    .fill(crate::theme::ACCENT);
+                    .fill(crate::theme::ACCENT)
+                    .min_size(egui::vec2(110.0, crate::theme::BTN_HEIGHT_MD));
 
                     if ui
                         .add(apply_btn)

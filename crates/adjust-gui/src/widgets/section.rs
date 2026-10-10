@@ -30,6 +30,10 @@ pub fn render_section_header(
         reset_clicked: false,
     };
 
+    let text_prim = theme_text_primary(ui.visuals());
+    let text_sec = theme_text_secondary(ui.visuals());
+    let text_mut = theme_text_muted(ui.visuals());
+
     let header_response = ui.horizontal(|ui| {
         // Expand/collapse chevron
         let chevron = if is_open {
@@ -43,7 +47,7 @@ pub fn render_section_header(
                 egui::Button::new(
                     egui::RichText::new(chevron)
                         .size(11.0)
-                        .color(TEXT_SECONDARY),
+                        .color(text_sec),
                 )
                 .frame(false),
             )
@@ -55,9 +59,9 @@ pub fn render_section_header(
 
         // Stage Icon & Title
         let title_color = if enabled {
-            TEXT_PRIMARY
+            text_prim
         } else {
-            TEXT_DISABLED
+            text_mut
         };
 
         let title_resp = ui.add(
@@ -85,7 +89,7 @@ pub fn render_section_header(
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             // Bypass / Eye toggle
             let eye_icon = if enabled { ICON_EYE } else { ICON_EYE_OFF };
-            let eye_color = if enabled { ACCENT } else { TEXT_DISABLED };
+            let eye_color = if enabled { ACCENT } else { text_mut };
 
             if ui
                 .add(
@@ -107,7 +111,7 @@ pub fn render_section_header(
                         egui::Button::new(
                             egui::RichText::new(ICON_REFRESH)
                                 .size(11.0)
-                                .color(TEXT_SECONDARY),
+                                .color(text_sec),
                         )
                         .frame(false),
                     )

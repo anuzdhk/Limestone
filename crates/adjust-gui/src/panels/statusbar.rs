@@ -10,6 +10,9 @@ pub fn render_bottom_statusbar(
     last_process_time: f32,
     has_image: bool,
 ) {
+    let sec_col = theme_text_secondary(ui.visuals());
+    let mut_col = theme_text_muted(ui.visuals());
+
     ui.horizontal_centered(|ui| {
         ui.add_space(SPACE_8);
 
@@ -22,13 +25,13 @@ pub fn render_bottom_statusbar(
                     .color(ACCENT),
             );
         } else {
-            let dot_color = if has_image { COLOR_SUCCESS } else { TEXT_MUTED };
+            let dot_color = if has_image { COLOR_SUCCESS } else { mut_col };
             let (rect, painter) = ui.allocate_painter(egui::vec2(6.0, 6.0), egui::Sense::hover());
             painter.circle_filled(rect.rect.center(), 3.0, dot_color);
             ui.label(
                 egui::RichText::new(if has_image { "Ready" } else { "Idle" })
                     .size(11.0)
-                    .color(TEXT_SECONDARY),
+                    .color(sec_col),
             );
         }
 
@@ -42,7 +45,7 @@ pub fn render_bottom_statusbar(
                 egui::RichText::new(format!("{} × {} px", w, h))
                     .font(egui::FontId::monospace(11.0))
                     .size(11.0)
-                    .color(TEXT_SECONDARY),
+                    .color(sec_col),
             );
             ui.add_space(SPACE_8);
             ui.separator();
@@ -53,7 +56,7 @@ pub fn render_bottom_statusbar(
         ui.label(
             egui::RichText::new("RGB f32 (Linear Rec.709)")
                 .size(11.0)
-                .color(TEXT_MUTED),
+                .color(mut_col),
         );
 
         ui.add_space(SPACE_8);
@@ -63,7 +66,7 @@ pub fn render_bottom_statusbar(
         ui.label(
             egui::RichText::new("Preview: 960px downsample (Interactive)")
                 .size(11.0)
-                .color(TEXT_MUTED),
+                .color(mut_col),
         );
 
         // Right side info: Zoom % and latency
@@ -75,7 +78,7 @@ pub fn render_bottom_statusbar(
                     egui::RichText::new(format!("Frame latency: {:.1} ms", last_process_time))
                         .font(egui::FontId::monospace(11.0))
                         .size(11.0)
-                        .color(TEXT_SECONDARY),
+                        .color(sec_col),
                 );
                 ui.add_space(SPACE_8);
                 ui.separator();
@@ -87,7 +90,7 @@ pub fn render_bottom_statusbar(
                 egui::RichText::new(format!("Zoom: {}%", zoom_pct))
                     .font(egui::FontId::monospace(11.0))
                     .size(11.0)
-                    .color(TEXT_SECONDARY),
+                    .color(sec_col),
             );
         });
     });

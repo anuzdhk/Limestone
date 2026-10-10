@@ -18,6 +18,7 @@ pub fn render_central_canvas(
     pan: &mut egui::Vec2,
     proc_texture: Option<&egui::TextureHandle>,
     orig_texture: Option<&egui::TextureHandle>,
+    tile_texture: Option<(&egui::TextureHandle, egui::Rect)>,
     has_image: bool,
 ) -> CanvasResponse {
     let available_size = ui.available_size();
@@ -38,30 +39,35 @@ pub fn render_central_canvas(
         }
     });
 
-    let available_size = ui.available_size();
     let (response, painter) =
         ui.allocate_painter(available_size, egui::Sense::click_and_drag());
 
+    let canvas_bg = theme_canvas_bg(ui.visuals());
+    let card_bg = theme_surface_card(ui.visuals());
+    let border_col = theme_border(ui.visuals());
+    let text_prim = theme_text_primary(ui.visuals());
+    let text_mut = theme_text_muted(ui.visuals());
+
     // Canvas background
-    painter.rect_filled(response.rect, 0.0, BG_CANVAS);
+    painter.rect_filled(response.rect, 0.0, canvas_bg);
 
     // Empty state if no image loaded
     if !has_image || proc_texture.is_none() {
         let center = response.rect.center();
-        let box_size = egui::vec2(380.0, 220.0);
+        let box_size = egui::vec2(420.0, 240.0);
         let box_rect = egui::Rect::from_center_size(center, box_size);
 
         // Dashed drop border
-        painter.rect_filled(box_rect, RADIUS_CARD, SURFACE_CARD);
+        painter.rect_filled(box_rect, RADIUS_CARD, card_bg);
         painter.rect_stroke(
             box_rect,
             RADIUS_CARD,
-            egui::Stroke::new(1.5, BORDER_SUBTLE),
+            egui::Stroke::new(1.5_f32, border_col),
             egui::StrokeKind::Inside,
         );
 
         painter.text(
-            egui::pos2(center.x, center.y - 36.0),
+            egui::pos2(center.x, center.y - 44.0),
             egui::Align2::CENTER_CENTER,
             ICON_PHOTO,
             egui::FontId::proportional(36.0),
@@ -69,25 +75,25 @@ pub fn render_central_canvas(
         );
 
         painter.text(
-            egui::pos2(center.x, center.y + 10.0),
+            egui::pos2(center.x, center.y - 2.0),
             egui::Align2::CENTER_CENTER,
-            "Drag & Drop an image here",
+            "Drag & Drop an image here or Paste (Ctrl+V)",
             egui::FontId::proportional(15.0),
-            TEXT_PRIMARY,
+            text_prim,
         );
 
         painter.text(
-            egui::pos2(center.x, center.y + 34.0),
+            egui::pos2(center.x, center.y + 24.0),
             egui::Align2::CENTER_CENTER,
             "Supports PNG, JPEG, TIFF, WebP, BMP",
             egui::FontId::proportional(12.0),
-            TEXT_MUTED,
+            text_mut,
         );
 
-        // Open button inside empty state
+        // Standardized Open Button inside empty state
         let btn_rect = egui::Rect::from_center_size(
-            egui::pos2(center.x, center.y + 70.0),
-            egui::vec2(120.0, 28.0),
+            egui::pos2(center.x, center.y + 68.0),
+            egui::vec2(130.0, BTN_HEIGHT_MD),
         );
         let btn_resp = ui.interact(btn_rect, ui.id().with("empty_open_btn"), egui::Sense::click());
         let btn_fill = if btn_resp.is_pointer_button_down_on() {
@@ -101,7 +107,7 @@ pub fn render_central_canvas(
         painter.text(
             btn_rect.center(),
             egui::Align2::CENTER_CENTER,
-            "Open Image",
+            format!("{} Open Image", ICON_FOLDER_OPEN),
             egui::FontId::proportional(12.5),
             Color32::BLACK,
         );
@@ -161,12 +167,35 @@ pub fn render_central_canvas(
                 proc_tex
             };
 
+            // Base image render
             painter.image(
                 active_tex.id(),
                 img_rect,
                 egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
                 Color32::WHITE,
             );
+
+            // Tiled High-Resolution Overlay when zooming to 100% or greater
+            if !holding_space && *zoom >= 0.95 {
+                if let Some((tile_tex, tile_norm_rect)) = tile_texture {
+                    let tile_screen_min = egui::pos2(
+                        img_rect.min.x + tile_norm_rect.min.x * img_rect.width(),
+                        img_rect.min.y + tile_norm_rect.min.y * img_rect.height(),
+                    );
+                    let tile_screen_max = egui::pos2(
+                        img_rect.min.x + tile_norm_rect.max.x * img_rect.width(),
+                        img_rect.min.y + tile_norm_rect.max.y * img_rect.height(),
+                    );
+                    let tile_rect = egui::Rect::from_min_max(tile_screen_min, tile_screen_max);
+
+                    painter.image(
+                        tile_tex.id(),
+                        tile_rect,
+                        egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
+                        Color32::WHITE,
+                    );
+                }
+            }
 
             if holding_space {
                 // Show badge "ORIGINAL (HOLDING SPACE)"
@@ -212,17 +241,20 @@ pub fn render_central_canvas(
                         egui::pos2(split_x, img_rect.min.y),
                         egui::pos2(split_x, img_rect.max.y),
                     ],
-                    egui::Stroke::new(1.5, Color32::WHITE),
+                    egui::Stroke::new(1.5_f32, Color32::WHITE),
                 );
 
-                // Elegant grip handle pill
+                // Grip handle pill
                 let pill_center = egui::pos2(split_x, img_rect.center().y);
                 let pill_rect = egui::Rect::from_center_size(pill_center, egui::vec2(24.0, 40.0));
-                painter.rect_filled(pill_rect, 12.0, SURFACE_PANEL);
+                let panel_bg = theme_surface_panel(ui.visuals());
+                let text_prim = theme_text_primary(ui.visuals());
+                let text_sec = theme_text_secondary(ui.visuals());
+                painter.rect_filled(pill_rect, 12.0, panel_bg);
                 painter.rect_stroke(
                     pill_rect,
                     12.0,
-                    egui::Stroke::new(1.5, ACCENT),
+                    egui::Stroke::new(1.5_f32, ACCENT),
                     egui::StrokeKind::Inside,
                 );
                 painter.text(
@@ -230,7 +262,7 @@ pub fn render_central_canvas(
                     egui::Align2::CENTER_CENTER,
                     ICON_GRIP,
                     egui::FontId::proportional(16.0),
-                    TEXT_PRIMARY,
+                    text_prim,
                 );
 
                 // Tags "Original" and "Adjusted"
@@ -239,7 +271,7 @@ pub fn render_central_canvas(
                     egui::Align2::RIGHT_TOP,
                     "ORIGINAL",
                     egui::FontId::monospace(10.0),
-                    TEXT_SECONDARY,
+                    text_sec,
                 );
                 painter.text(
                     egui::pos2(split_x + 12.0, img_rect.min.y + 16.0),
@@ -295,7 +327,7 @@ pub fn render_central_canvas(
     }
 
     // Canvas footer hint chip
-    let hint_text = "Space: Hold to compare  |  Scroll: Zoom  |  Drag: Pan canvas";
+    let hint_text = "Space: Hold to compare  |  Scroll: Zoom  |  Drag: Pan canvas  |  Ctrl+V: Paste";
     painter.text(
         egui::pos2(response.rect.min.x + 14.0, response.rect.max.y - 14.0),
         egui::Align2::LEFT_BOTTOM,

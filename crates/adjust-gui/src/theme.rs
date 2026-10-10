@@ -1,47 +1,95 @@
 use eframe::egui::{self, Color32, CornerRadius, FontFamily, FontId, Stroke, TextStyle};
+use serde::{Deserialize, Serialize};
 
 // ============================================================================
-// 1. COLOR TOKENS (Pro Dark Photo Editor System)
+// 1. DYNAMIC THEME CONFIGURATION
 // ============================================================================
 
-/// Neutral canvas background: Near-black neutral without color tint
-/// ensures accurate color and exposure judgment for photographs.
+#[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Debug)]
+pub enum ThemeMode {
+    DarkStudio,
+    LightStudio,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Debug)]
+pub enum AccentTheme {
+    ElectricCyan, // #00D2FF
+    VibrantAmber, // #FFAA00
+    EmeraldGreen, // #00E676
+    RoyalPurple,  // #B388FF
+    CrimsonRed,   // #FF5252
+}
+
+impl AccentTheme {
+    pub fn color(&self) -> Color32 {
+        match self {
+            AccentTheme::ElectricCyan => Color32::from_rgb(0, 210, 255),
+            AccentTheme::VibrantAmber => Color32::from_rgb(255, 170, 0),
+            AccentTheme::EmeraldGreen => Color32::from_rgb(0, 230, 118),
+            AccentTheme::RoyalPurple => Color32::from_rgb(179, 136, 255),
+            AccentTheme::CrimsonRed => Color32::from_rgb(255, 82, 82),
+        }
+    }
+
+    pub fn hover_color(&self) -> Color32 {
+        let c = self.color();
+        Color32::from_rgb(
+            c.r().saturating_add(30),
+            c.g().saturating_add(30),
+            c.b().saturating_add(30),
+        )
+    }
+
+    pub fn pressed_color(&self) -> Color32 {
+        let c = self.color();
+        Color32::from_rgb(
+            c.r().saturating_sub(40),
+            c.g().saturating_sub(40),
+            c.b().saturating_sub(40),
+        )
+    }
+
+    pub fn name(&self) -> &'static str {
+        match self {
+            AccentTheme::ElectricCyan => "Cyan",
+            AccentTheme::VibrantAmber => "Amber",
+            AccentTheme::EmeraldGreen => "Emerald",
+            AccentTheme::RoyalPurple => "Purple",
+            AccentTheme::CrimsonRed => "Crimson",
+        }
+    }
+}
+
+// ============================================================================
+// 2. DEFAULT COLOR TOKENS
+// ============================================================================
+
 pub const BG_CANVAS: Color32 = Color32::from_rgb(11, 12, 15); // #0B0C0F
-
-/// Surface 1: Sidebars, top toolbar, and bottom status bar
 pub const SURFACE_PANEL: Color32 = Color32::from_rgb(17, 19, 24); // #111318
-
-/// Surface 2: Cards, containers, inspector backdrop, curve canvas
 pub const SURFACE_CARD: Color32 = Color32::from_rgb(23, 26, 33); // #171A21
-
-/// Surface 3: Raised controls, hovered rows, active inputs
 pub const SURFACE_RAISED: Color32 = Color32::from_rgb(31, 35, 44); // #1F232C
 
-/// Borders: 1px subtle boundary divider used sparingly
 pub const BORDER_SUBTLE: Color32 = Color32::from_rgb(42, 47, 58); // #2A2F3A
-pub const BORDER_FOCUS: Color32 = Color32::from_rgb(0, 210, 255); // #00D2FF
+pub const BORDER_FOCUS: Color32 = Color32::from_rgb(0, 210, 255);
 
-/// Primary Accent: Electric Cyan
-pub const ACCENT: Color32 = Color32::from_rgb(0, 210, 255); // #00D2FF
-pub const ACCENT_HOVER: Color32 = Color32::from_rgb(51, 220, 255); // #33DCFF
-pub const ACCENT_PRESSED: Color32 = Color32::from_rgb(0, 168, 204); // #00A8CC
+pub const ACCENT: Color32 = Color32::from_rgb(0, 210, 255);
+pub const ACCENT_HOVER: Color32 = Color32::from_rgb(51, 220, 255);
+pub const ACCENT_PRESSED: Color32 = Color32::from_rgb(0, 168, 204);
 pub const ACCENT_MUTED: Color32 = Color32::from_rgba_premultiplied(0, 30, 36, 36);
 pub const ACCENT_STAR: Color32 = Color32::from_rgb(255, 200, 50);
 
-/// Text colors (WCAG AA Compliant contrast against dark surfaces)
-pub const TEXT_PRIMARY: Color32 = Color32::from_rgb(232, 234, 240); // #E8EAF0
-pub const TEXT_SECONDARY: Color32 = Color32::from_rgb(154, 163, 178); // #9AA3B2
+pub const TEXT_PRIMARY: Color32 = Color32::from_rgb(232, 234, 240);
+pub const TEXT_SECONDARY: Color32 = Color32::from_rgb(154, 163, 178);
 pub const TEXT_MUTED: Color32 = Color32::from_rgb(120, 128, 142);
-pub const TEXT_DISABLED: Color32 = Color32::from_rgb(91, 100, 114); // #5B6472
+pub const TEXT_DISABLED: Color32 = Color32::from_rgb(91, 100, 114);
 
-/// Semantic status colors
 pub const COLOR_SUCCESS: Color32 = Color32::from_rgb(46, 204, 113);
 pub const STATUS_SUCCESS: Color32 = Color32::from_rgb(46, 204, 113);
 pub const STATUS_WARNING: Color32 = Color32::from_rgb(241, 196, 15);
 pub const STATUS_ERROR: Color32 = Color32::from_rgb(231, 76, 60);
 
 // ============================================================================
-// 2. METRICS & SPACING (4px Base Grid)
+// 3. METRICS & SPACING (4px Base Grid & Standard Heights)
 // ============================================================================
 
 pub const SPACE_4: f32 = 4.0;
@@ -60,68 +108,128 @@ pub const HEIGHT_STATUSBAR: f32 = 24.0;
 pub const WIDTH_SIDEBAR_LEFT: f32 = 260.0;
 pub const WIDTH_SIDEBAR_RIGHT: f32 = 330.0;
 
-// Legacy aliases
-pub const TOP_BAR_HEIGHT: f32 = HEIGHT_TOOLBAR;
-pub const STATUS_BAR_HEIGHT: f32 = HEIGHT_STATUSBAR;
-pub const SIDEBAR_LEFT_WIDTH: f32 = WIDTH_SIDEBAR_LEFT;
-pub const SIDEBAR_RIGHT_WIDTH: f32 = WIDTH_SIDEBAR_RIGHT;
+// Standard button dimensions
+pub const BTN_HEIGHT_SM: f32 = 24.0;
+pub const BTN_HEIGHT_MD: f32 = 28.0;
+pub const BTN_HEIGHT_LG: f32 = 32.0;
 
 // ============================================================================
-// 3. THEME APPLICATION
+// 4. THEME APPLICATION WITH DYNAMIC CUSTOMIZATION
 // ============================================================================
 
-/// Applies the complete visual styling to egui Context.
-pub fn apply_theme(ctx: &egui::Context) {
-    let mut visuals = egui::Visuals::dark();
+pub fn apply_theme_configured(
+    ctx: &egui::Context,
+    mode: ThemeMode,
+    accent: AccentTheme,
+    ui_scale: f32,
+) {
+    let mut visuals = match mode {
+        ThemeMode::DarkStudio => egui::Visuals::dark(),
+        ThemeMode::LightStudio => egui::Visuals::light(),
+    };
 
-    visuals.override_text_color = Some(TEXT_PRIMARY);
-    visuals.panel_fill = SURFACE_PANEL;
-    visuals.window_fill = SURFACE_CARD;
-    visuals.extreme_bg_color = BG_CANVAS;
-    visuals.faint_bg_color = SURFACE_CARD;
+    let accent_col = accent.color();
+    let accent_hover = accent.hover_color();
+    let accent_pressed = accent.pressed_color();
+    let accent_muted = Color32::from_rgba_premultiplied(
+        (accent_col.r() as f32 * 0.15) as u8,
+        (accent_col.g() as f32 * 0.15) as u8,
+        (accent_col.b() as f32 * 0.15) as u8,
+        38,
+    );
 
-    // Controls: Inactive
-    visuals.widgets.inactive.bg_fill = SURFACE_CARD;
-    visuals.widgets.inactive.bg_stroke = Stroke::new(1.0_f32, BORDER_SUBTLE);
-    visuals.widgets.inactive.corner_radius = RADIUS_CONTROL;
-    visuals.widgets.inactive.fg_stroke = Stroke::new(1.0_f32, TEXT_PRIMARY);
+    match mode {
+        ThemeMode::DarkStudio => {
+            visuals.override_text_color = Some(TEXT_PRIMARY);
+            visuals.panel_fill = SURFACE_PANEL;
+            visuals.window_fill = SURFACE_CARD;
+            visuals.extreme_bg_color = BG_CANVAS;
+            visuals.faint_bg_color = SURFACE_CARD;
 
-    // Controls: Hovered
-    visuals.widgets.hovered.bg_fill = SURFACE_RAISED;
-    visuals.widgets.hovered.bg_stroke = Stroke::new(1.0_f32, ACCENT);
-    visuals.widgets.hovered.corner_radius = RADIUS_CONTROL;
-    visuals.widgets.hovered.fg_stroke = Stroke::new(1.0_f32, Color32::WHITE);
+            visuals.widgets.inactive.bg_fill = SURFACE_CARD;
+            visuals.widgets.inactive.bg_stroke = Stroke::new(1.0_f32, BORDER_SUBTLE);
+            visuals.widgets.inactive.corner_radius = RADIUS_CONTROL;
+            visuals.widgets.inactive.fg_stroke = Stroke::new(1.0_f32, TEXT_PRIMARY);
 
-    // Controls: Active
-    visuals.widgets.active.bg_fill = ACCENT_PRESSED;
-    visuals.widgets.active.bg_stroke = Stroke::new(1.0_f32, ACCENT);
-    visuals.widgets.active.corner_radius = RADIUS_CONTROL;
-    visuals.widgets.active.fg_stroke = Stroke::new(1.0_f32, Color32::WHITE);
+            visuals.widgets.hovered.bg_fill = SURFACE_RAISED;
+            visuals.widgets.hovered.bg_stroke = Stroke::new(1.0_f32, accent_col);
+            visuals.widgets.hovered.corner_radius = RADIUS_CONTROL;
+            visuals.widgets.hovered.fg_stroke = Stroke::new(1.0_f32, Color32::WHITE);
 
-    // Controls: Open
-    visuals.widgets.open.bg_fill = SURFACE_RAISED;
-    visuals.widgets.open.bg_stroke = Stroke::new(1.0_f32, ACCENT);
-    visuals.widgets.open.corner_radius = RADIUS_CONTROL;
-    visuals.widgets.open.fg_stroke = Stroke::new(1.0_f32, Color32::WHITE);
+            visuals.widgets.active.bg_fill = accent_pressed;
+            visuals.widgets.active.bg_stroke = Stroke::new(1.0_f32, accent_col);
+            visuals.widgets.active.corner_radius = RADIUS_CONTROL;
+            visuals.widgets.active.fg_stroke = Stroke::new(1.0_f32, Color32::WHITE);
 
-    // Controls: Non-interactive
-    visuals.widgets.noninteractive.bg_fill = SURFACE_PANEL;
-    visuals.widgets.noninteractive.bg_stroke = Stroke::new(1.0_f32, BORDER_SUBTLE);
-    visuals.widgets.noninteractive.corner_radius = RADIUS_CONTROL;
-    visuals.widgets.noninteractive.fg_stroke = Stroke::new(1.0_f32, TEXT_SECONDARY);
+            visuals.widgets.open.bg_fill = SURFACE_RAISED;
+            visuals.widgets.open.bg_stroke = Stroke::new(1.0_f32, accent_col);
+            visuals.widgets.open.corner_radius = RADIUS_CONTROL;
+            visuals.widgets.open.fg_stroke = Stroke::new(1.0_f32, Color32::WHITE);
 
-    // Selection
-    visuals.selection.bg_fill = ACCENT_MUTED;
-    visuals.selection.stroke = Stroke::new(1.0_f32, ACCENT);
+            visuals.widgets.noninteractive.bg_fill = SURFACE_PANEL;
+            visuals.widgets.noninteractive.bg_stroke = Stroke::new(1.0_f32, BORDER_SUBTLE);
+            visuals.widgets.noninteractive.corner_radius = RADIUS_CONTROL;
+            visuals.widgets.noninteractive.fg_stroke = Stroke::new(1.0_f32, TEXT_SECONDARY);
 
-    // Window & Popup
-    visuals.window_corner_radius = RADIUS_CARD;
-    visuals.menu_corner_radius = RADIUS_CONTROL;
-    visuals.window_stroke = Stroke::new(1.0_f32, BORDER_SUBTLE);
+            visuals.selection.bg_fill = accent_muted;
+            visuals.selection.stroke = Stroke::new(1.0_f32, accent_col);
+
+            visuals.window_corner_radius = RADIUS_CARD;
+            visuals.menu_corner_radius = RADIUS_CONTROL;
+            visuals.window_stroke = Stroke::new(1.0_f32, BORDER_SUBTLE);
+        }
+        ThemeMode::LightStudio => {
+            let bg_light = Color32::from_rgb(222, 226, 234);     // Canvas neutral photo gray
+            let panel_light = Color32::from_rgb(244, 246, 250);  // Panels light surface
+            let card_light = Color32::from_rgb(255, 255, 255);   // Card elevated surface
+            let raised_light = Color32::from_rgb(235, 239, 245); // Hover / raised surface
+            let border_light = Color32::from_rgb(208, 214, 226); // Crisp subtle border
+            let text_dark = Color32::from_rgb(18, 22, 30);       // High-contrast primary text
+            let text_secondary_dark = Color32::from_rgb(76, 84, 100);
+
+            visuals.override_text_color = Some(text_dark);
+            visuals.panel_fill = panel_light;
+            visuals.window_fill = card_light;
+            visuals.extreme_bg_color = bg_light;
+            visuals.faint_bg_color = card_light;
+
+            visuals.widgets.inactive.bg_fill = card_light;
+            visuals.widgets.inactive.bg_stroke = Stroke::new(1.0_f32, border_light);
+            visuals.widgets.inactive.corner_radius = RADIUS_CONTROL;
+            visuals.widgets.inactive.fg_stroke = Stroke::new(1.0_f32, text_dark);
+
+            visuals.widgets.hovered.bg_fill = raised_light;
+            visuals.widgets.hovered.bg_stroke = Stroke::new(1.0_f32, accent_col);
+            visuals.widgets.hovered.corner_radius = RADIUS_CONTROL;
+            visuals.widgets.hovered.fg_stroke = Stroke::new(1.0_f32, text_dark);
+
+            visuals.widgets.active.bg_fill = accent_hover;
+            visuals.widgets.active.bg_stroke = Stroke::new(1.0_f32, accent_col);
+            visuals.widgets.active.corner_radius = RADIUS_CONTROL;
+            visuals.widgets.active.fg_stroke = Stroke::new(1.0_f32, Color32::WHITE);
+
+            visuals.widgets.open.bg_fill = raised_light;
+            visuals.widgets.open.bg_stroke = Stroke::new(1.0_f32, accent_col);
+            visuals.widgets.open.corner_radius = RADIUS_CONTROL;
+            visuals.widgets.open.fg_stroke = Stroke::new(1.0_f32, text_dark);
+
+            visuals.widgets.noninteractive.bg_fill = panel_light;
+            visuals.widgets.noninteractive.bg_stroke = Stroke::new(1.0_f32, border_light);
+            visuals.widgets.noninteractive.corner_radius = RADIUS_CONTROL;
+            visuals.widgets.noninteractive.fg_stroke = Stroke::new(1.0_f32, text_secondary_dark);
+
+            visuals.selection.bg_fill = accent_muted;
+            visuals.selection.stroke = Stroke::new(1.0_f32, accent_col);
+
+            visuals.window_corner_radius = RADIUS_CARD;
+            visuals.menu_corner_radius = RADIUS_CONTROL;
+            visuals.window_stroke = Stroke::new(1.0_f32, border_light);
+        }
+    }
 
     ctx.set_visuals(visuals);
 
-    // Configure exact font hierarchy (11 caption, 13 body, 15 section title, 20 panel title)
+    // Apply scaling and exact font hierarchy
     let mut style = (*ctx.style()).clone();
     style.text_styles.insert(
         TextStyle::Small,
@@ -148,8 +256,84 @@ pub fn apply_theme(ctx: &egui::Context) {
         FontId::new(12.0, FontFamily::Monospace),
     );
 
+    // Consistent button and widget padding
     style.spacing.item_spacing = egui::vec2(SPACE_8, SPACE_6);
+    style.spacing.button_padding = egui::vec2(10.0, 5.0);
     style.spacing.window_margin = egui::Margin::same(12);
 
     ctx.set_style(style);
+    ctx.set_zoom_factor(ui_scale.clamp(0.75, 1.75));
 }
+
+pub fn apply_theme(ctx: &egui::Context) {
+    apply_theme_configured(ctx, ThemeMode::DarkStudio, AccentTheme::ElectricCyan, 1.0);
+}
+
+// ============================================================================
+// 5. DYNAMIC THEME-AWARE COLOR RETRIEVAL HELPERS
+// ============================================================================
+
+pub fn theme_text_primary(visuals: &egui::Visuals) -> Color32 {
+    if visuals.dark_mode {
+        TEXT_PRIMARY
+    } else {
+        Color32::from_rgb(18, 22, 30)
+    }
+}
+
+pub fn theme_text_secondary(visuals: &egui::Visuals) -> Color32 {
+    if visuals.dark_mode {
+        TEXT_SECONDARY
+    } else {
+        Color32::from_rgb(76, 84, 100)
+    }
+}
+
+pub fn theme_text_muted(visuals: &egui::Visuals) -> Color32 {
+    if visuals.dark_mode {
+        TEXT_MUTED
+    } else {
+        Color32::from_rgb(112, 122, 138)
+    }
+}
+
+pub fn theme_surface_panel(visuals: &egui::Visuals) -> Color32 {
+    if visuals.dark_mode {
+        SURFACE_PANEL
+    } else {
+        Color32::from_rgb(244, 246, 250)
+    }
+}
+
+pub fn theme_surface_card(visuals: &egui::Visuals) -> Color32 {
+    if visuals.dark_mode {
+        SURFACE_CARD
+    } else {
+        Color32::from_rgb(255, 255, 255)
+    }
+}
+
+pub fn theme_surface_raised(visuals: &egui::Visuals) -> Color32 {
+    if visuals.dark_mode {
+        SURFACE_RAISED
+    } else {
+        Color32::from_rgb(235, 239, 245)
+    }
+}
+
+pub fn theme_border(visuals: &egui::Visuals) -> Color32 {
+    if visuals.dark_mode {
+        BORDER_SUBTLE
+    } else {
+        Color32::from_rgb(208, 214, 226)
+    }
+}
+
+pub fn theme_canvas_bg(visuals: &egui::Visuals) -> Color32 {
+    if visuals.dark_mode {
+        BG_CANVAS
+    } else {
+        Color32::from_rgb(222, 226, 234)
+    }
+}
+

@@ -7,6 +7,7 @@ use std::path::PathBuf;
 pub struct CanvasResponse {
     pub dropped_path: Option<PathBuf>,
     pub open_clicked: bool,
+    pub canvas_size: egui::Vec2,
 }
 
 pub fn render_central_canvas(
@@ -19,9 +20,11 @@ pub fn render_central_canvas(
     orig_texture: Option<&egui::TextureHandle>,
     has_image: bool,
 ) -> CanvasResponse {
+    let available_size = ui.available_size();
     let mut resp = CanvasResponse {
         dropped_path: None,
         open_clicked: false,
+        canvas_size: available_size,
     };
 
     // Receive drag and dropped files

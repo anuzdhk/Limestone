@@ -1,4 +1,3 @@
-use crate::icons::*;
 use crate::theme::*;
 use adjust_core::HistogramData;
 use eframe::egui::{self, Color32, Ui};
@@ -18,6 +17,7 @@ pub fn render_inspector_panel(
     histogram: Option<&HistogramData>,
     pan: &mut egui::Vec2,
     zoom: f32,
+    canvas_size: egui::Vec2,
 ) {
     ui.add_space(SPACE_4);
 
@@ -51,7 +51,8 @@ pub fn render_inspector_panel(
 
     ui.add_space(SPACE_6);
 
-    // Inspector Content Area (Fixed Height Card)
+    // Fixed Height Container Card (140px for comfortable photo proportions)
+    let card_height = 140.0;
     let card_frame = egui::Frame::new()
         .fill(SURFACE_CARD)
         .stroke(egui::Stroke::new(1.0_f32, BORDER_SUBTLE))
@@ -59,79 +60,184 @@ pub fn render_inspector_panel(
         .inner_margin(egui::Margin::same(6));
 
     card_frame.show(ui, |ui| {
-        let available_w = ui.available_width().max(120.0);
-        let height = 110.0;
+        let card_w = ui.available_width().max(120.0);
 
         match *current_tab {
             InspectorTab::Navigate => {
                 if let Some(tex) = nav_texture {
-                    let (resp, painter) = ui.allocate_painter(egui::vec2(available_w, height), egui::Sense::click_and_drag());
-                    
-                    // Center and fit texture inside the card
+                    let img_size = tex.size_vec2();
+                    let aspect = if img_size.y > 0.0 {
+                        img_size.x / img_size.y
+                    } else {
+                        1.5
+                    };
+
+                    // Compute letterboxed/pillarboxed display rect preserving exact aspect ratio
+                    let (disp_w, disp_h) = if aspect > card_w / card_height {
+                        (card_w, card_w / aspect)
+                    } else {
+                        (card_height * aspect, card_height)
+                    };
+
+                    let (resp, painter) = ui.allocate_painter(
+                        egui::vec2(card_w, card_height),
+                        egui::Sense::click_and_drag(),
+                    );
+
+                    // Dark neutral letterbox backdrop
+                    painter.rect_filled(resp.rect, RADIUS_CONTROL, SURFACE_PANEL);
+
+                    let img_rect = egui::Rect::from_center_size(
+                        resp.rect.center(),
+                        egui::vec2(disp_w, disp_h),
+                    );
+
+                    // Render thumbnail with correct aspect ratio
                     painter.image(
                         tex.id(),
-                        resp.rect,
+                        img_rect,
                         egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
                         Color32::WHITE,
                     );
-
-                    // Viewport crop box indicating canvas view area
-                    let box_w = (resp.rect.width() / zoom.max(1.0)).clamp(20.0, resp.rect.width());
-                    let box_h = (resp.rect.height() / zoom.max(1.0)).clamp(16.0, resp.rect.height());
-
-                    let center_offset = *pan * 0.05;
-                    let box_center = resp.rect.center() - center_offset;
-                    let crop_rect = egui::Rect::from_center_size(box_center, egui::vec2(box_w, box_h));
-                    let clamped_crop = crop_rect.intersect(resp.rect);
-
                     painter.rect_stroke(
-                        clamped_crop,
+                        img_rect,
                         0.0,
-                        egui::Stroke::new(1.5_f32, ACCENT),
+                        egui::Stroke::new(1.0_f32, BORDER_SUBTLE),
                         egui::StrokeKind::Inside,
                     );
 
+                    // Viewport crop box indicating canvas view area
+                    let effective_canvas = if canvas_size.x > 0.0 && canvas_size.y > 0.0 {
+                        canvas_size
+                    } else {
+                        egui::vec2(900.0, 600.0)
+                    };
+
+                    let scaled_img_size = img_size * zoom;
+                    let norm_vis_w = (effective_canvas.x / scaled_img_size.x).clamp(0.05, 1.0);
+                    let norm_vis_h = (effective_canvas.y / scaled_img_size.y).clamp(0.05, 1.0);
+
+                    let box_w = (disp_w * norm_vis_w).clamp(16.0, disp_w);
+                    let box_h = (disp_h * norm_vis_h).clamp(12.0, disp_h);
+
+                    // Pan offset mapping: on canvas, img center = canvas_center + pan
+                    // So canvas viewport is offset by -pan relative to image center
+                    let norm_pan_x = -pan.x / scaled_img_size.x.max(1.0);
+                    let norm_pan_y = -pan.y / scaled_img_size.y.max(1.0);
+
+                    let crop_cx = img_rect.center().x + norm_pan_x * disp_w;
+                    let crop_cy = img_rect.center().y + norm_pan_y * disp_h;
+                    let crop_rect = egui::Rect::from_center_size(
+                        egui::pos2(crop_cx, crop_cy),
+                        egui::vec2(box_w, box_h),
+                    );
+
+                    // Draw styled viewport crop box
+                    painter.rect_stroke(
+                        crop_rect,
+                        2.0,
+                        egui::Stroke::new(2.0_f32, ACCENT),
+                        egui::StrokeKind::Middle,
+                    );
+                    // Subtle translucent interior highlight
+                    painter.rect_filled(
+                        crop_rect,
+                        2.0,
+                        Color32::from_rgba_premultiplied(0, 30, 40, 25),
+                    );
+
+                    // Interactive dragging inside Navigator to pan the canvas
                     if resp.dragged() {
-                        *pan -= resp.drag_delta() * 15.0;
+                        let delta = resp.drag_delta();
+                        // Moving crop box by delta means panning canvas in opposite relative direction
+                        let pan_scale_x = scaled_img_size.x / disp_w.max(1.0);
+                        let pan_scale_y = scaled_img_size.y / disp_h.max(1.0);
+                        pan.x -= delta.x * pan_scale_x;
+                        pan.y -= delta.y * pan_scale_y;
+                    } else if resp.clicked() {
+                        // Click to center viewport at clicked location
+                        if let Some(pos) = resp.interact_pointer_pos() {
+                            if img_rect.contains(pos) {
+                                let offset_x = pos.x - img_rect.center().x;
+                                let offset_y = pos.y - img_rect.center().y;
+                                let pan_scale_x = scaled_img_size.x / disp_w.max(1.0);
+                                let pan_scale_y = scaled_img_size.y / disp_h.max(1.0);
+                                pan.x = -offset_x * pan_scale_x;
+                                pan.y = -offset_y * pan_scale_y;
+                            }
+                        }
                     }
                 } else {
-                    render_empty_placeholder(ui, available_w, height, "No preview available");
+                    render_empty_placeholder(ui, card_w, card_height, "No preview available");
                 }
             }
             InspectorTab::Loupe => {
                 if let Some(tex) = proc_texture {
-                    let (resp, painter) = ui.allocate_painter(egui::vec2(available_w, height), egui::Sense::hover());
+                    let img_size = tex.size_vec2();
+                    let aspect = if img_size.y > 0.0 {
+                        img_size.x / img_size.y
+                    } else {
+                        1.5
+                    };
+
+                    let (disp_w, disp_h) = if aspect > card_w / card_height {
+                        (card_w, card_w / aspect)
+                    } else {
+                        (card_height * aspect, card_height)
+                    };
+
+                    let (resp, painter) = ui.allocate_painter(
+                        egui::vec2(card_w, card_height),
+                        egui::Sense::hover(),
+                    );
+
+                    painter.rect_filled(resp.rect, RADIUS_CONTROL, SURFACE_PANEL);
+
+                    let loupe_rect = egui::Rect::from_center_size(
+                        resp.rect.center(),
+                        egui::vec2(disp_w, disp_h),
+                    );
+
                     // 400% center magnification
-                    let loupe_uv = egui::Rect::from_min_max(egui::pos2(0.375, 0.375), egui::pos2(0.625, 0.625));
-                    painter.image(tex.id(), resp.rect, loupe_uv, Color32::WHITE);
-                    
+                    let loupe_uv = egui::Rect::from_min_max(
+                        egui::pos2(0.375, 0.375),
+                        egui::pos2(0.625, 0.625),
+                    );
+                    painter.image(tex.id(), loupe_rect, loupe_uv, Color32::WHITE);
+                    painter.rect_stroke(
+                        loupe_rect,
+                        0.0,
+                        egui::Stroke::new(1.0_f32, BORDER_SUBTLE),
+                        egui::StrokeKind::Inside,
+                    );
+
                     // Crosshair overlay
-                    let center = resp.rect.center();
+                    let center = loupe_rect.center();
                     painter.line_segment(
-                        [egui::pos2(center.x - 8.0, center.y), egui::pos2(center.x + 8.0, center.y)],
-                        egui::Stroke::new(1.0_f32, ACCENT),
+                        [egui::pos2(center.x - 10.0, center.y), egui::pos2(center.x + 10.0, center.y)],
+                        egui::Stroke::new(1.5_f32, ACCENT),
                     );
                     painter.line_segment(
-                        [egui::pos2(center.x, center.y - 8.0), egui::pos2(center.x, center.y + 8.0)],
-                        egui::Stroke::new(1.0_f32, ACCENT),
+                        [egui::pos2(center.x, center.y - 10.0), egui::pos2(center.x, center.y + 10.0)],
+                        egui::Stroke::new(1.5_f32, ACCENT),
                     );
 
                     painter.text(
-                        egui::pos2(resp.rect.min.x + 4.0, resp.rect.min.y + 4.0),
+                        egui::pos2(loupe_rect.min.x + 6.0, loupe_rect.min.y + 6.0),
                         egui::Align2::LEFT_TOP,
-                        "400% Zoom",
-                        egui::FontId::proportional(10.0),
+                        "400% Target",
+                        egui::FontId::monospace(10.5),
                         TEXT_SECONDARY,
                     );
                 } else {
-                    render_empty_placeholder(ui, available_w, height, "No image loaded");
+                    render_empty_placeholder(ui, card_w, card_height, "No image loaded");
                 }
             }
             InspectorTab::Histogram => {
                 if let Some(hist) = histogram {
-                    render_histogram_graph(ui, hist, available_w, height);
+                    render_histogram_graph(ui, hist, card_w, card_height);
                 } else {
-                    render_empty_placeholder(ui, available_w, height, "Computing histogram...");
+                    render_empty_placeholder(ui, card_w, card_height, "Computing histogram...");
                 }
             }
         }

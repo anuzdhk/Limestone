@@ -68,6 +68,7 @@ struct AdjustApp {
     split_ratio: f32, // 0.0 .. 1.0
     zoom: f32,
     pan: egui::Vec2,
+    canvas_size: egui::Vec2,
 
     histogram: Option<HistogramData>,
     is_dirty: bool,
@@ -114,6 +115,7 @@ impl AdjustApp {
             split_ratio: 0.5,
             zoom: 1.0,
             pan: egui::Vec2::ZERO,
+            canvas_size: egui::vec2(900.0, 600.0),
             histogram: None,
             is_dirty: false,
             is_rendering: false,
@@ -572,6 +574,7 @@ impl eframe::App for AdjustApp {
                         self.histogram.as_ref(),
                         &mut self.pan,
                         self.zoom,
+                        self.canvas_size,
                     );
 
                     ui.add_space(SPACE_4);
@@ -649,6 +652,8 @@ impl eframe::App for AdjustApp {
                 self.orig_texture.as_ref(),
                 self.original_f32.is_some(),
             );
+
+            self.canvas_size = canvas_resp.canvas_size;
 
             if let Some(path) = canvas_resp.dropped_path {
                 if let Ok(img) = image::open(&path) {

@@ -112,7 +112,7 @@ dependencies = [
 
 [[package]]
 name = "adjust-cli"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "adjust-core",
  "clap",
@@ -123,7 +123,7 @@ dependencies = [
 
 [[package]]
 name = "adjust-core"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "image",
  "rayon",
@@ -133,7 +133,7 @@ dependencies = [
 
 [[package]]
 name = "adjust-gui"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "adjust-core",
  "arboard",

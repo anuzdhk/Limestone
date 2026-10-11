@@ -1,11 +1,16 @@
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
-  <Package Name="LimeStone Pro"
-           Manufacturer="LimeStone Studio"
-           Version="0.1.0"
+  <!-- Pass -d ProductVersion=x.y.z from the build; MSI versions must be numeric. -->
+  <?ifndef ProductVersion?>
+  <?define ProductVersion = "0.0.0"?>
+  <?endif?>
+
+  <Package Name="Limestone"
+           Manufacturer="Limestone"
+           Version="$(var.ProductVersion)"
            UpgradeCode="A32D6561-2A1B-450F-A167-73B00DC75DA4"
            Scope="perMachine">
 
-    <MajorUpgrade DowngradeErrorMessage="A newer version of LimeStone is already installed." />
+    <MajorUpgrade DowngradeErrorMessage="A newer version of Limestone is already installed." />
     <MediaTemplate EmbedCab="yes" />
 
     <Icon Id="AppIcon" SourceFile="logo\logo.ico" />
@@ -17,13 +22,13 @@
           <File Id="LimeStoneExe" Name="Limestone.exe" Source="bin\Limestone.exe" KeyPath="yes">
             <Shortcut Id="DesktopShortcut"
                       Directory="DesktopFolder"
-                      Name="LimeStone Pro"
+                      Name="Limestone"
                       WorkingDirectory="INSTALLFOLDER"
                       Icon="AppIcon"
                       Advertise="yes" />
             <Shortcut Id="StartMenuShortcut"
                       Directory="ProgramMenuDir"
-                      Name="LimeStone Pro"
+                      Name="Limestone"
                       WorkingDirectory="INSTALLFOLDER"
                       Icon="AppIcon"
                       Advertise="yes" />
@@ -33,7 +38,7 @@
     </StandardDirectory>
 
     <StandardDirectory Id="ProgramMenuFolder">
-      <Directory Id="ProgramMenuDir" Name="LimeStone Pro">
+      <Directory Id="ProgramMenuDir" Name="Limestone">
         <Component Id="ProgramMenuShortcutComp" Guid="7293AA6B-9524-4B2E-BE60-F2E51A21BAF2">
           <RemoveFolder Id="CleanUpProgramMenuDir" On="uninstall" />
           <RegistryValue Root="HKCU" Key="Software\LimeStoneStudio\LimeStone" Name="installed" Type="integer" Value="1" KeyPath="yes" />
@@ -43,7 +48,7 @@
 
     <StandardDirectory Id="DesktopFolder" />
 
-    <Feature Id="MainApplication" Title="LimeStone Application" Level="1">
+    <Feature Id="MainApplication" Title="Limestone" Level="1">
       <ComponentRef Id="MainExecutable" />
       <ComponentRef Id="ProgramMenuShortcutComp" />
     </Feature>

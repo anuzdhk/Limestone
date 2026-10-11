@@ -3,7 +3,7 @@
 [![Rust](https://img.shields.io/badge/rust-1.80%2B-orange.svg)](https://www.rust-lang.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS-lightgrey.svg)]()
-[![Release](https://img.shields.io/badge/release-v0.1.0--beta-brightgreen.svg)](https://github.com/anuzdhk/Limestone/releases)
+[![Release](https://img.shields.io/badge/release-v0.3.0--beta-brightgreen.svg)](https://github.com/anuzdhk/Limestone/releases)
 
 A fast desktop image enhancement tool written in Rust, inspired by *Topaz Adjust 5.0*. Limestone brings adaptive exposure, detail and clarity enhancement, vibrant colour, HDR-style tone mapping, film looks, toning and creative effects together with 157 one-click presets, all rendered live on your photo.
 

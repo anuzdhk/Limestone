@@ -104,21 +104,42 @@ pub fn generate_curve_lut(points: &[CurvePoint]) -> [f32; 1024] {
     lut
 }
 
+/// Master curve followed by optional per-channel curves (empty channel = identity).
 pub fn apply_curve(img: &mut RgbImageF32, params: &CurveParams) {
-    if !params.enabled || params.points.len() < 2 {
+    if !params.enabled {
+        return;
+    }
+    let active = |pts: &[CurvePoint]| pts.len() >= 2;
+    if ![&params.points, &params.red, &params.green, &params.blue]
+        .iter()
+        .any(|c| active(c))
+    {
         return;
     }
 
-    let lut = generate_curve_lut(&params.points);
+    // Compose master + channel curve into one LUT per channel.
+    let master = generate_curve_lut(&params.points);
+    let compose = |channel: &[CurvePoint]| -> [f32; 1024] {
+        if !active(channel) {
+            return master;
+        }
+        let ch = generate_curve_lut(channel);
+        let mut out = [0.0; 1024];
+        for (o, &m) in out.iter_mut().zip(master.iter()) {
+            *o = sample_lut(&ch, m);
+        }
+        out
+    };
+    let (lut_r, lut_g, lut_b) = (compose(&params.red), compose(&params.green), compose(&params.blue));
 
     img.r
         .par_iter_mut()
         .zip(img.g.par_iter_mut())
         .zip(img.b.par_iter_mut())
         .for_each(|((r, g), b)| {
-            *r = sample_lut(&lut, *r);
-            *g = sample_lut(&lut, *g);
-            *b = sample_lut(&lut, *b);
+            *r = sample_lut(&lut_r, *r);
+            *g = sample_lut(&lut_g, *g);
+            *b = sample_lut(&lut_b, *b);
         });
 }
 

@@ -9,68 +9,73 @@ mod panels;
 mod recovery;
 mod render_worker;
 mod theme;
+mod thumbnails;
+mod user_presets;
 mod widgets;
 
-use adjust_core::{get_factory_presets, AdjustParams, HistogramData, Preset, RgbImageF32};
-use config::{AppConfig, AppLanguage};
+use adjust_core::{get_collections, get_factory_presets, AdjustParams, HistogramData, Preset, PresetCollection, RgbImageF32};
+use config::AppConfig;
+use curve_widget::CurveChannel;
 use eframe::egui;
 use export_queue::{BackgroundExporter, ExportJob, ExportResult};
-use icons::*;
-use image::RgbImage;
-use panels::adjustments::render_adjustments_accordion;
-use panels::canvas::render_central_canvas;
-use panels::inspector::{render_inspector_panel, InspectorTab};
-use panels::presets::render_presets_sidebar;
-use panels::statusbar::render_bottom_statusbar;
-use panels::toolbar::{render_top_toolbar, ViewMode};
+use panels::canvas::{canvas, CanvasState};
+use panels::dialogs::{self, SaveOutcome};
+use panels::inspector::{inspector, InfoTab, InspectorAction, InspectorState};
+use panels::sidebar::{presets_for, sidebar, Library, SidebarAction, SidebarState};
+use panels::toolbar::{toolbar, ToolbarAction, ToolbarState, ViewMode};
 use recovery::AutoSaveManager;
 use render_worker::{PixelRect, RenderResult, RenderWorker, TileKey, PREVIEW_MAX_DIM};
 use std::path::PathBuf;
 use std::sync::Arc;
 use theme::*;
+use thumbnails::ThumbnailCache;
 use widgets::toast::ToastManager;
 
+const NO_PRESET: &str = "No preset";
+
 fn load_app_icon() -> Option<egui::IconData> {
-    let png_bytes = include_bytes!("../assets/icon.png");
-    if let Ok(image) = image::load_from_memory(png_bytes) {
-        let rgba = image.to_rgba8();
-        let (width, height) = rgba.dimensions();
-        Some(egui::IconData {
-            rgba: rgba.into_raw(),
-            width,
-            height,
-        })
-    } else {
-        None
-    }
+    let image = image::load_from_memory(include_bytes!("../assets/icon.png")).ok()?.to_rgba8();
+    let (width, height) = image.dimensions();
+    Some(egui::IconData {
+        rgba: image.into_raw(),
+        width,
+        height,
+    })
 }
 
 fn main() -> eframe::Result<()> {
     let mut viewport = egui::ViewportBuilder::default()
-        .with_inner_size([1440.0, 920.0])
-        .with_min_inner_size([1100.0, 700.0])
-        .with_title("Limestone Pro — Studio Image Enhancement");
-
+        .with_inner_size([1440.0, 900.0])
+        .with_min_inner_size([980.0, 620.0])
+        .with_title("LimeStone");
     if let Some(icon) = load_app_icon() {
         viewport = viewport.with_icon(icon);
     }
 
-    let native_options = eframe::NativeOptions {
-        viewport,
-        ..Default::default()
-    };
-
     eframe::run_native(
-        "Limestone Pro",
-        native_options,
+        "LimeStone",
+        eframe::NativeOptions {
+            viewport,
+            ..Default::default()
+        },
         Box::new(|cc| {
-            // Setup font with Tabler Icons
-            setup_tabler_fonts(&cc.egui_ctx);
+            install_fonts(&cc.egui_ctx);
             let config = AppConfig::load();
-            apply_theme_configured(&cc.egui_ctx, config.theme_mode, config.accent_theme, config.ui_scale);
+            apply_theme(&cc.egui_ctx, config.theme_mode, config.accent, config.ui_scale);
             Ok(Box::new(AdjustApp::new(cc, config)))
         }),
     )
+}
+
+/// Deferred UI commands (so file dialogs never run while egui holds an input lock).
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Command {
+    Open,
+    Export,
+    Paste,
+    SavePreset,
+    Undo,
+    Redo,
 }
 
 struct AdjustApp {
@@ -93,13 +98,16 @@ struct AdjustApp {
 
     params: AdjustParams,
     presets: Vec<Preset>,
-    selected_preset_name: String,
-    selected_collection: String,
+    user_presets: Vec<Preset>,
+    collections: Vec<PresetCollection>,
+    thumbs: ThumbnailCache,
+    library: Library,
     preset_search: String,
+    selected_preset_name: String,
 
     view_mode: ViewMode,
-    inspector_tab: InspectorTab,
-    curve_channel: crate::curve_widget::CurveChannel,
+    info_tab: InfoTab,
+    curve_channel: CurveChannel,
     split_ratio: f32, // 0.0 .. 1.0
     zoom: f32,
     pan: egui::Vec2,
@@ -113,6 +121,8 @@ struct AdjustApp {
     // Undo / Redo & effect stacking
     undo_stack: Vec<AdjustParams>,
     redo_stack: Vec<AdjustParams>,
+    /// True while a slider drag is in progress (one undo step per gesture).
+    editing_gesture: bool,
     /// Params of each applied ("baked") layer, oldest first. `base_f32` == source + these layers.
     layer_snapshots: Vec<AdjustParams>,
 
@@ -121,12 +131,15 @@ struct AdjustApp {
     pending_tile: Option<TileKey>,
     canvas_img_rect: Option<egui::Rect>,
     canvas_rect: Option<egui::Rect>,
-    fit_pending: bool,
+    /// Keep the image fitted to the canvas (window/panel resizes) until the user zooms or pans.
+    auto_fit: bool,
 
     // UI state & services
-    show_sidebars: bool,
-    show_shortcuts_modal: bool,
-    show_settings_modal: bool,
+    applied_dark: Option<bool>,
+    show_shortcuts: bool,
+    show_settings: bool,
+    save_dialog: Option<String>,
+    commands: Vec<Command>,
     toasts: ToastManager,
     exporter: BackgroundExporter,
     worker: RenderWorker,
@@ -135,13 +148,6 @@ struct AdjustApp {
 
 impl AdjustApp {
     fn new(cc: &eframe::CreationContext<'_>, config: AppConfig) -> Self {
-        let presets = get_factory_presets();
-        let default_preset = presets
-            .iter()
-            .find(|p| p.name == "Mild Contrast Pop")
-            .cloned()
-            .unwrap_or_else(|| presets[0].clone());
-
         let mut app = Self {
             config,
             image_path: None,
@@ -154,14 +160,17 @@ impl AdjustApp {
             orig_texture: None,
             proc_texture: None,
             nav_texture: None,
-            params: default_preset.params.clone(),
-            presets,
-            selected_preset_name: default_preset.name,
-            selected_collection: "All Collections".to_string(),
+            params: AdjustParams::default(),
+            presets: get_factory_presets(),
+            user_presets: user_presets::load_all(),
+            collections: get_collections(),
+            thumbs: ThumbnailCache::new(cc.egui_ctx.clone()),
+            library: Library::Collection(adjust_core::preset::ADJUST4),
             preset_search: String::new(),
+            selected_preset_name: NO_PRESET.to_string(),
             view_mode: ViewMode::Split,
-            inspector_tab: InspectorTab::Navigate,
-            curve_channel: crate::curve_widget::CurveChannel::Rgb,
+            info_tab: InfoTab::Histogram,
+            curve_channel: CurveChannel::Rgb,
             split_ratio: 0.5,
             zoom: 1.0,
             pan: egui::Vec2::ZERO,
@@ -172,15 +181,18 @@ impl AdjustApp {
             last_process_time: 0.0,
             undo_stack: Vec::new(),
             redo_stack: Vec::new(),
+            editing_gesture: false,
             layer_snapshots: Vec::new(),
             tile: None,
             pending_tile: None,
             canvas_img_rect: None,
             canvas_rect: None,
-            fit_pending: true,
-            show_sidebars: true,
-            show_shortcuts_modal: false,
-            show_settings_modal: false,
+            auto_fit: true,
+            applied_dark: None,
+            show_shortcuts: false,
+            show_settings: false,
+            save_dialog: None,
+            commands: Vec::new(),
             toasts: ToastManager::new(),
             exporter: BackgroundExporter::new(),
             worker: RenderWorker::new(cc.egui_ctx.clone()),
@@ -198,13 +210,40 @@ impl AdjustApp {
                         app.rebake_layers();
                     }
                     app.toasts.info("Recovered your previous session after an unexpected exit");
-                    return app;
                 }
             }
         }
-
-        app.load_default_sample();
         app
+    }
+
+    /// Re-renders every preset thumbnail for the current base image, starting with
+    /// the collection on screen.
+    fn rebuild_thumbnails(&mut self) {
+        let Some(preview) = self.preview_base.clone() else {
+            return;
+        };
+        let first: Vec<String> = presets_for(
+            &self.library,
+            &self.collections,
+            &self.presets,
+            &self.user_presets,
+            &self.config.favorite_presets,
+        )
+        .iter()
+        .map(|p| p.name.clone())
+        .collect();
+        let mut items: Vec<(String, AdjustParams)> = Vec::new();
+        for name in &first {
+            if let Some(p) = self.presets.iter().chain(&self.user_presets).find(|p| &p.name == name) {
+                items.push((p.name.clone(), p.params.clone()));
+            }
+        }
+        for p in self.presets.iter().chain(&self.user_presets) {
+            if !first.contains(&p.name) {
+                items.push((p.name.clone(), p.params.clone()));
+            }
+        }
+        self.thumbs.rebuild(&preview, items);
     }
 
     fn push_undo(&mut self) {
@@ -233,42 +272,6 @@ impl AdjustApp {
         }
     }
 
-    fn load_default_sample(&mut self) {
-        let width = 960;
-        let height = 640;
-        let mut img = RgbImage::new(width, height);
-
-        for y in 0..height {
-            for x in 0..width {
-                let fx = x as f32 / width as f32;
-                let fy = y as f32 / height as f32;
-
-                let sky_r = (30.0 + fx * 50.0) as u8;
-                let sky_g = (80.0 + (1.0 - fy) * 110.0) as u8;
-                let sky_b = (195.0 + (1.0 - fy) * 60.0) as u8;
-
-                let ground_r = ((fy * 170.0) as u8).saturating_add((fx * 45.0) as u8);
-                let ground_g = (((1.0 - fx) * 130.0) as u8).saturating_add(35);
-                let ground_b: u8 = 45;
-
-                let (r, g, b) = if fy < 0.52 {
-                    (sky_r, sky_g, sky_b)
-                } else {
-                    let checker = if (x / 8 + y / 8) % 2 == 0 { 28 } else { 0 };
-                    (
-                        ground_r.saturating_add(checker),
-                        ground_g.saturating_add(checker),
-                        ground_b.saturating_add(checker),
-                    )
-                };
-
-                img.put_pixel(x, y, image::Rgb([r, g, b]));
-            }
-        }
-
-        self.set_image(RgbImageF32::from_rgb8(&img), None);
-    }
-
     /// Replaces the working image. `path` is `None` for images without a file (sample, clipboard).
     fn set_image(&mut self, img: RgbImageF32, path: Option<PathBuf>) {
         let source = Arc::new(img);
@@ -289,8 +292,10 @@ impl AdjustApp {
         self.nav_texture = None;
         self.tile = None;
         self.pending_tile = None;
-        self.fit_pending = true;
+        self.auto_fit = true;
         self.is_dirty = true;
+        self.histogram = None;
+        self.rebuild_thumbnails();
 
         if let Some(path) = path {
             self.config.add_recent(path);
@@ -353,10 +358,7 @@ impl AdjustApp {
 
     fn open_image_dialog(&mut self) {
         if let Some(path) = rfd::FileDialog::new()
-            .add_filter(
-                "Images",
-                &["png", "jpg", "jpeg", "tif", "tiff", "webp", "bmp"],
-            )
+            .add_filter("Images", &["png", "jpg", "jpeg", "tif", "tiff", "webp", "bmp"])
             .pick_file()
         {
             self.open_image_path(path);
@@ -373,6 +375,8 @@ impl AdjustApp {
                 .add_filter("PNG Image", &["png"])
                 .add_filter("JPEG Image", &["jpg", "jpeg"])
                 .add_filter("TIFF Image", &["tif", "tiff"])
+                .add_filter("WebP Image", &["webp"])
+                .set_file_name(self.suggested_export_name())
                 .save_file()
             {
                 self.exporter.queue_export(ExportJob {
@@ -381,13 +385,24 @@ impl AdjustApp {
                     params: self.params.clone(),
                 });
                 self.toasts.info(format!(
-                    "Queued background export to {}",
+                    "Exporting {}…",
                     path.file_name().unwrap_or_default().to_string_lossy()
                 ));
             }
         } else {
             self.toasts.warn("No image available to export");
         }
+    }
+
+    /// "photo.jpg" -> "photo-edited.png" (keeps 16-bit/alpha by default).
+    fn suggested_export_name(&self) -> String {
+        let stem = self
+            .image_path
+            .as_ref()
+            .and_then(|p| p.file_stem())
+            .map(|s| s.to_string_lossy().into_owned())
+            .unwrap_or_else(|| "image".into());
+        format!("{stem}-edited.png")
     }
 
     /// Queues a preview render of the current params on the background worker.
@@ -457,6 +472,7 @@ impl AdjustApp {
                     self.base_f32 = Some(base);
                     self.preview_base = Some(preview);
                     self.baking = false;
+                    self.rebuild_thumbnails();
                     self.orig_texture = None;
                     self.tile = None;
                     self.pending_tile = None;
@@ -512,7 +528,7 @@ impl AdjustApp {
         self.pending_tile = None;
         self.worker.request_bake(self.base_version, base, vec![params]);
 
-        self.selected_preset_name = "Neutral".to_string();
+        self.selected_preset_name = NO_PRESET.to_string();
         self.undo_stack.clear();
         self.redo_stack.clear();
         self.is_dirty = true;
@@ -527,7 +543,7 @@ impl AdjustApp {
         }
         if let Some(last) = self.layer_snapshots.pop() {
             self.params = last;
-            self.selected_preset_name = "Custom".to_string();
+            self.selected_preset_name = "Restored layer".to_string();
             self.undo_stack.clear();
             self.redo_stack.clear();
             self.rebake_layers();
@@ -539,7 +555,7 @@ impl AdjustApp {
     /// "Cancel": drops every applied layer and resets the sliders.
     fn cancel_all_layers(&mut self) {
         self.params = AdjustParams::default();
-        self.selected_preset_name = "Neutral".to_string();
+        self.selected_preset_name = NO_PRESET.to_string();
         if !self.layer_snapshots.is_empty() {
             self.layer_snapshots.clear();
             self.rebake_layers();
@@ -547,7 +563,7 @@ impl AdjustApp {
         self.undo_stack.clear();
         self.redo_stack.clear();
         self.is_dirty = true;
-        self.toasts.warn("Canceled all adjustments");
+        self.toasts.info("Reset all adjustments");
     }
 
     /// Size of the full-resolution image in pixels.
@@ -655,235 +671,244 @@ impl AdjustApp {
             return;
         }
         let fit_zoom = self.fit_zoom(ctx);
-        let mut paste = false;
+        let mut commands = Vec::new();
         ctx.input(|i| {
+            let cmd = i.modifiers.command;
             if i.key_pressed(egui::Key::Tab) {
-                self.show_sidebars = !self.show_sidebars;
+                let show = !(self.config.show_sidebar || self.config.show_inspector);
+                self.config.show_sidebar = show;
+                self.config.show_inspector = show;
             }
-
-            if i.key_pressed(egui::Key::Questionmark)
-                || (i.modifiers.shift && i.key_pressed(egui::Key::Slash))
-            {
-                self.show_shortcuts_modal = !self.show_shortcuts_modal;
+            if i.key_pressed(egui::Key::Questionmark) || (i.modifiers.shift && i.key_pressed(egui::Key::Slash)) {
+                self.show_shortcuts = !self.show_shortcuts;
             }
-
-            if i.key_pressed(egui::Key::Num1) {
-                self.view_mode = ViewMode::Single;
+            if !cmd {
+                if i.key_pressed(egui::Key::Num1) {
+                    self.view_mode = ViewMode::Single;
+                }
+                if i.key_pressed(egui::Key::Num2) {
+                    self.view_mode = ViewMode::Split;
+                }
+                if i.key_pressed(egui::Key::Num3) {
+                    self.view_mode = ViewMode::SideBySide;
+                }
+                if i.key_pressed(egui::Key::F) {
+                    self.zoom = fit_zoom;
+                    self.pan = egui::Vec2::ZERO;
+                    self.auto_fit = true;
+                }
+                if i.key_pressed(egui::Key::Num0) {
+                    self.zoom = 1.0;
+                }
+                if i.key_pressed(egui::Key::Plus) || i.key_pressed(egui::Key::Equals) {
+                    self.zoom = (self.zoom * 1.25).min(16.0);
+                }
+                if i.key_pressed(egui::Key::Minus) {
+                    self.zoom = (self.zoom / 1.25).max(0.01);
+                }
             }
-            if i.key_pressed(egui::Key::Num2) {
-                self.view_mode = ViewMode::Split;
+            if cmd && i.key_pressed(egui::Key::Z) {
+                commands.push(if i.modifiers.shift { Command::Redo } else { Command::Undo });
             }
-            if i.key_pressed(egui::Key::Num3) {
-                self.view_mode = ViewMode::SideBySide;
+            if cmd && i.key_pressed(egui::Key::O) {
+                commands.push(Command::Open);
             }
-
-            if i.key_pressed(egui::Key::F) {
-                self.zoom = fit_zoom;
-                self.pan = egui::Vec2::ZERO;
+            if cmd && i.key_pressed(egui::Key::E) {
+                commands.push(Command::Export);
             }
-            if i.key_pressed(egui::Key::Num0) {
-                self.zoom = 1.0;
+            if cmd && i.key_pressed(egui::Key::S) {
+                commands.push(Command::SavePreset);
             }
-
-            if i.modifiers.command && i.modifiers.shift && i.key_pressed(egui::Key::Z) {
-                self.redo();
-            } else if i.modifiers.command && i.key_pressed(egui::Key::Z) {
-                self.undo();
-            }
-
-            if i.modifiers.command && i.key_pressed(egui::Key::O) {
-                self.open_image_dialog();
-            }
-            if i.modifiers.command && i.key_pressed(egui::Key::E) {
-                self.queue_export_dialog();
+            if cmd && i.key_pressed(egui::Key::Comma) {
+                self.show_settings = true;
             }
             // egui-winit consumes the Ctrl+V *press* (and emits nothing for image clipboards),
             // so react to the key release instead and read the clipboard ourselves.
-            paste = i.events.iter().any(|e| {
-                matches!(e, egui::Event::Key { key: egui::Key::V, pressed: false, modifiers, .. }
-                    if modifiers.command)
-            });
+            if i.events.iter().any(|e| {
+                matches!(e, egui::Event::Key { key: egui::Key::V, pressed: false, modifiers, .. } if modifiers.command)
+            }) {
+                commands.push(Command::Paste);
+            }
         });
-        if paste {
-            self.paste_image_from_clipboard();
+        self.commands.extend(commands);
+    }
+
+    fn run_commands(&mut self) {
+        for command in std::mem::take(&mut self.commands) {
+            match command {
+                Command::Open => self.open_image_dialog(),
+                Command::Export => self.queue_export_dialog(),
+                Command::Paste => self.paste_image_from_clipboard(),
+                Command::SavePreset => {
+                    let suggested = if self.selected_preset_name == NO_PRESET {
+                        String::new()
+                    } else {
+                        format!("{} (edited)", self.selected_preset_name)
+                    };
+                    self.save_dialog = Some(suggested);
+                }
+                Command::Undo => self.undo(),
+                Command::Redo => self.redo(),
+            }
         }
     }
 
-    fn render_settings_modal(&mut self, ctx: &egui::Context) {
-        if !self.show_settings_modal {
-            return;
-        }
+    fn apply_preset(&mut self, preset: Preset) {
+        self.push_undo();
+        self.params = preset.params;
+        self.selected_preset_name = preset.name;
+        self.is_dirty = true;
+    }
 
-        let mut changed_theme = false;
-        let mut close_modal = false;
-
-        egui::Window::new(format!("{} Preferences & Settings", ICON_SETTINGS))
-            .collapsible(false)
-            .resizable(false)
-            .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
-            .fixed_size(egui::vec2(460.0, 380.0))
-            .show(ctx, |ui| {
-                ui.add_space(SPACE_8);
-
-                // Theme Mode (Dark / Light)
-                ui.label(egui::RichText::new("Theme Appearance").strong().size(13.0));
-                ui.horizontal(|ui| {
-                    if ui.selectable_value(&mut self.config.theme_mode, ThemeMode::DarkStudio, "Dark Studio").clicked() {
-                        changed_theme = true;
-                    }
-                    if ui.selectable_value(&mut self.config.theme_mode, ThemeMode::LightStudio, "Light Studio").clicked() {
-                        changed_theme = true;
-                    }
-                });
-
-                ui.add_space(SPACE_12);
-
-                // Accent Color Selector
-                ui.label(egui::RichText::new("Accent Color").strong().size(13.0));
-                ui.horizontal(|ui| {
-                    let accents = [
-                        AccentTheme::ElectricCyan,
-                        AccentTheme::VibrantAmber,
-                        AccentTheme::EmeraldGreen,
-                        AccentTheme::RoyalPurple,
-                        AccentTheme::CrimsonRed,
-                    ];
-                    for acc in accents {
-                        let is_active = self.config.accent_theme == acc;
-                        let btn = ui.add_sized(
-                            [68.0, BTN_HEIGHT_SM],
-                            egui::SelectableLabel::new(is_active, acc.name()),
-                        );
-                        if btn.clicked() {
-                            self.config.accent_theme = acc;
-                            changed_theme = true;
-                        }
-                    }
-                });
-
-                ui.add_space(SPACE_12);
-
-                // UI Scaling Slider
-                ui.label(egui::RichText::new("Interface Scale").strong().size(13.0));
-                ui.horizontal(|ui| {
-                    if ui.add(egui::Slider::new(&mut self.config.ui_scale, 0.80..=1.50).text("Scale").fixed_decimals(2)).changed() {
-                        changed_theme = true;
-                    }
-                });
-
-                ui.add_space(SPACE_12);
-
-                // Language Selector
-                ui.label(egui::RichText::new("Language").strong().size(13.0));
-                egui::ComboBox::from_id_salt("lang_combo")
-                    .selected_text(self.config.language.name())
-                    .show_ui(ui, |ui| {
-                        let languages = [
-                            AppLanguage::English,
-                            AppLanguage::Spanish,
-                            AppLanguage::French,
-                            AppLanguage::German,
-                            AppLanguage::Japanese,
-                        ];
-                        for lang in languages {
-                            if ui.selectable_value(&mut self.config.language, lang, lang.name()).clicked() {
-                                self.config.save();
-                            }
-                        }
-                    });
-
-                ui.add_space(SPACE_12);
-
-                // Hardware Acceleration & High-Resolution Preview Toggles
-                ui.label(egui::RichText::new("Performance & Engine").strong().size(13.0));
-                if ui.checkbox(&mut self.config.gpu_acceleration, format!("{} Multi-Core / GPU Compute Acceleration", ICON_CPU)).on_hover_text("Enables SIMD & multithreaded compute pipelines for sub-15ms filters").changed() {
-                    self.config.save();
+    fn handle_sidebar(&mut self, action: SidebarAction) {
+        match action {
+            SidebarAction::Apply(preset) => self.apply_preset(preset),
+            SidebarAction::SavePreset => self.commands.push(Command::SavePreset),
+            SidebarAction::ToggleFavorite(name) => {
+                if !self.config.favorite_presets.remove(&name) {
+                    self.config.favorite_presets.insert(name);
                 }
-
-                if ui.checkbox(&mut self.config.high_quality_tiled_preview, "Tiled 100% Full-Resolution Zoom Preview").on_hover_text("Dynamically renders full-resolution viewport tiles when zoomed in").changed() {
-                    self.config.save();
-                }
-
-                ui.add_space(SPACE_16);
-                ui.vertical_centered(|ui| {
-                    let btn_close = egui::Button::new("Close & Save")
-                        .min_size(egui::vec2(120.0, BTN_HEIGHT_MD));
-                    if ui.add(btn_close).clicked() {
-                        close_modal = true;
+                self.config.save();
+            }
+            SidebarAction::ImportPreset => {
+                if let Some(path) = rfd::FileDialog::new().add_filter("LimeStone Preset", &["json"]).pick_file() {
+                    match user_presets::import(&path) {
+                        Ok(preset) => self.add_user_preset(preset, "Imported"),
+                        Err(e) => self.toasts.error(e),
                     }
-                });
-            });
-
-        if changed_theme {
-            self.config.save();
-            apply_theme_configured(ctx, self.config.theme_mode, self.config.accent_theme, self.config.ui_scale);
-        }
-
-        if close_modal {
-            self.show_settings_modal = false;
+                }
+            }
+            SidebarAction::ExportPreset(preset) => {
+                if let Some(path) = rfd::FileDialog::new()
+                    .add_filter("LimeStone Preset", &["json"])
+                    .set_file_name(format!("{}.json", preset.name))
+                    .save_file()
+                {
+                    match user_presets::export(&preset, &path) {
+                        Ok(()) => self.toasts.success(format!("Exported “{}”", preset.name)),
+                        Err(e) => self.toasts.error(format!("Export failed: {e}")),
+                    }
+                }
+            }
+            SidebarAction::DeletePreset(name) => match user_presets::delete(&name) {
+                Ok(()) => {
+                    self.user_presets.retain(|p| p.name != name);
+                    self.config.favorite_presets.remove(&name);
+                    self.toasts.info(format!("Deleted “{name}”"));
+                }
+                Err(e) => self.toasts.error(format!("Couldn't delete: {e}")),
+            },
         }
     }
 
-    fn render_shortcuts_modal(&mut self, ctx: &egui::Context) {
-        if !self.show_shortcuts_modal {
-            return;
+    fn add_user_preset(&mut self, preset: Preset, verb: &str) {
+        self.user_presets.retain(|p| p.name != preset.name);
+        self.user_presets.push(preset.clone());
+        self.user_presets.sort_by_key(|p| p.name.to_lowercase());
+        if let Some(preview) = self.preview_base.clone() {
+            self.thumbs.render_one(&preview, preset.name.clone(), preset.params.clone());
         }
+        self.library = Library::Mine;
+        self.toasts.success(format!("{verb} “{}”", preset.name));
+    }
 
-        egui::Window::new(format!("{} Keyboard Shortcuts", ICON_KEYBOARD))
-            .collapsible(false)
-            .resizable(false)
-            .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
-            .fixed_size(egui::vec2(440.0, 380.0))
-            .show(ctx, |ui| {
-                ui.add_space(SPACE_8);
-                ui.label(
-                    egui::RichText::new("Professional Studio Keybindings")
-                        .size(13.0)
-                        .color(TEXT_SECONDARY),
-                );
-                ui.add_space(SPACE_12);
+    fn handle_toolbar(&mut self, ctx: &egui::Context, action: ToolbarAction) {
+        use ToolbarAction::*;
+        match action {
+            ToggleSidebar => self.config.show_sidebar = !self.config.show_sidebar,
+            ToggleInspector => self.config.show_inspector = !self.config.show_inspector,
+            Open => self.commands.push(Command::Open),
+            Paste => self.commands.push(Command::Paste),
+            Undo => self.commands.push(Command::Undo),
+            Redo => self.commands.push(Command::Redo),
+            ZoomIn => self.zoom = (self.zoom * 1.25).min(16.0),
+            ZoomOut => self.zoom = (self.zoom / 1.25).max(0.01),
+            Fit => {
+                self.zoom = self.fit_zoom(ctx);
+                self.pan = egui::Vec2::ZERO;
+                self.auto_fit = true;
+            }
+            ActualSize => self.zoom = 1.0,
+            Export => self.commands.push(Command::Export),
+            Settings => self.show_settings = true,
+            Shortcuts => self.show_shortcuts = true,
+        }
+    }
 
-                let shortcuts = [
-                    ("Space (Hold)", "Quick toggle compare original"),
-                    ("Ctrl+O / Cmd+O", "Open image from filesystem"),
-                    ("Ctrl+E / Cmd+E", "Queue background export"),
-                    ("Ctrl+V", "Paste image from clipboard"),
-                    ("Ctrl+Z / Cmd+Z", "Undo last parameter change"),
-                    ("Ctrl+Shift+Z", "Redo last undone parameter"),
-                    ("1 / 2 / 3", "Switch view: Single | Split | Side-by-side"),
-                    ("F", "Fit image to canvas center"),
-                    ("0", "Reset zoom to 100% actual size"),
-                    ("Tab", "Toggle sidebars (Focus Mode)"),
-                    ("?", "Toggle this shortcuts cheat sheet"),
-                    ("Shift + Slider Drag", "Precision fine adjustment"),
-                    ("Double-Click Slider", "Reset slider to default value"),
-                ];
-
-                for (key, desc) in shortcuts {
-                    ui.horizontal(|ui| {
-                        ui.add_sized(
-                            [160.0, 18.0],
-                            egui::Label::new(
-                                egui::RichText::new(key)
-                                    .font(egui::FontId::monospace(11.5))
-                                    .strong()
-                                    .color(self.config.accent_theme.color()),
-                            ),
-                        );
-                        ui.label(egui::RichText::new(desc).size(12.0).color(TEXT_PRIMARY));
-                    });
-                    ui.add_space(SPACE_4);
-                }
-
-                ui.add_space(SPACE_16);
-                ui.vertical_centered(|ui| {
-                    let btn_close = egui::Button::new("Close")
-                        .min_size(egui::vec2(80.0, BTN_HEIGHT_MD));
-                    if ui.add(btn_close).clicked() {
-                        self.show_shortcuts_modal = false;
+    fn handle_inspector(&mut self, action: InspectorAction, before: &AdjustParams) {
+        match action {
+            InspectorAction::Changed => {
+                // One undo step per slider gesture, not per frame of dragging.
+                if !self.editing_gesture {
+                    if self.undo_stack.len() >= 100 {
+                        self.undo_stack.remove(0);
                     }
-                });
-            });
+                    self.undo_stack.push(before.clone());
+                    self.redo_stack.clear();
+                    self.editing_gesture = true;
+                }
+                if self.selected_preset_name != NO_PRESET && !self.selected_preset_name.ends_with(" (edited)") {
+                    self.selected_preset_name = format!("{} (edited)", self.selected_preset_name);
+                }
+                self.is_dirty = true;
+            }
+            InspectorAction::Apply => self.apply_layer(),
+            InspectorAction::UndoLayer => self.undo_layer(),
+            InspectorAction::ResetAll => {
+                if self.params != AdjustParams::default() || !self.layer_snapshots.is_empty() {
+                    self.push_undo();
+                    self.cancel_all_layers();
+                }
+            }
+        }
+    }
+
+    fn render_dialogs(&mut self, ctx: &egui::Context) {
+        if self.show_settings {
+            let (open, theme_changed) = dialogs::settings(ctx, &mut self.config);
+            self.show_settings = open;
+            if theme_changed {
+                self.applied_dark = None; // re-apply next frame
+            }
+        }
+        if self.show_shortcuts {
+            self.show_shortcuts = dialogs::shortcuts(ctx);
+        }
+        if let Some(mut name) = self.save_dialog.take() {
+            let exists = self.user_presets.iter().any(|p| p.name.eq_ignore_ascii_case(name.trim()));
+            match dialogs::save_preset(ctx, &mut name, exists) {
+                SaveOutcome::Open => self.save_dialog = Some(name),
+                SaveOutcome::Cancel => {}
+                SaveOutcome::Save => match user_presets::save(&name, &self.params) {
+                    Ok(preset) => {
+                        self.selected_preset_name = preset.name.clone();
+                        self.add_user_preset(preset, "Saved");
+                    }
+                    Err(e) => {
+                        self.toasts.error(format!("Couldn't save preset: {e}"));
+                        self.save_dialog = Some(name);
+                    }
+                },
+            }
+        }
+    }
+
+    fn window_title(&self) -> (String, String) {
+        let Some(base) = &self.base_f32 else {
+            return ("LimeStone".into(), "No image open".into());
+        };
+        let title = self
+            .image_path
+            .as_ref()
+            .and_then(|p| p.file_name())
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_else(|| "Untitled".into());
+        let mut sub = format!("{} × {}", base.width, base.height);
+        if base.high_bit_depth {
+            sub.push_str(" · 16-bit");
+        }
+        sub.push_str(&format!(" · {}", self.selected_preset_name));
+        (title, sub)
     }
 }
 
@@ -895,309 +920,188 @@ impl eframe::App for AdjustApp {
     }
 
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        // Poll background export results
+        // Follow the OS appearance and apply theme changes.
+        let dark = is_dark(ctx, self.config.theme_mode);
+        if self.applied_dark != Some(dark) {
+            apply_theme(ctx, self.config.theme_mode, self.config.accent, self.config.ui_scale);
+            self.applied_dark = Some(dark);
+        }
+        let p = pal_ctx(ctx);
+
+        // Background results
         for res in self.exporter.poll_results() {
             match res {
-                ExportResult::Success { save_path, elapsed_ms, width, height } => {
-                    self.toasts.success(format!(
-                        "Exported {} ({}×{} px) in {} ms",
-                        save_path.file_name().unwrap_or_default().to_string_lossy(),
-                        width,
-                        height,
-                        elapsed_ms
-                    ));
-                }
-                ExportResult::Failed { save_path, error } => {
-                    self.toasts.error(format!(
-                        "Failed to export {}: {}",
-                        save_path.file_name().unwrap_or_default().to_string_lossy(),
-                        error
-                    ));
-                }
+                ExportResult::Success { save_path, elapsed_ms, width, height } => self.toasts.success(format!(
+                    "Exported {} ({}×{}) in {:.1}s",
+                    save_path.file_name().unwrap_or_default().to_string_lossy(),
+                    width,
+                    height,
+                    elapsed_ms as f32 / 1000.0
+                )),
+                ExportResult::Failed { save_path, error } => self.toasts.error(format!(
+                    "Couldn't export {}: {}",
+                    save_path.file_name().unwrap_or_default().to_string_lossy(),
+                    error
+                )),
             }
         }
-
-        // Collect finished background renders
         self.poll_worker(ctx);
+        self.thumbs.poll(ctx);
 
-        if self.fit_pending && self.base_f32.is_some() {
-            self.zoom = self.fit_zoom(ctx);
-            self.pan = egui::Vec2::ZERO;
-            self.fit_pending = false;
-        }
-
-        // Handle Global Shortcuts
+        let view_before = (self.zoom, self.pan, self.auto_fit);
         self.handle_keyboard_shortcuts(ctx);
-
-        // Queue a preview render if parameters changed
+        self.run_commands();
+        if !ctx.input(|i| i.pointer.any_down()) {
+            self.editing_gesture = false;
+        }
         if self.is_dirty {
             self.trigger_reprocess();
         }
 
-        // ==========================================
-        // 1. TOP HEADER TOOLBAR (48px)
-        // ==========================================
-        egui::TopBottomPanel::top("top_header_panel")
+        // ---- Toolbar ---------------------------------------------------------
+        let (title, subtitle) = self.window_title();
+        let toolbar_actions = egui::TopBottomPanel::top("toolbar")
             .exact_height(HEIGHT_TOOLBAR)
+            .frame(
+                egui::Frame::new()
+                    .fill(p.toolbar)
+                    .stroke(egui::Stroke::new(1.0_f32, p.separator)),
+            )
+            .show_separator_line(false)
             .show(ctx, |ui| {
-                let mut effect_opacity = ((1.0 - self.params.finishing.transparency) * 100.0).clamp(0.0, 100.0);
-                let old_opacity = effect_opacity;
-
-                let tb_resp = render_top_toolbar(
+                toolbar(
                     ui,
-                    &mut self.view_mode,
-                    &mut self.zoom,
-                    &mut effect_opacity,
-                    !self.undo_stack.is_empty(),
-                    !self.redo_stack.is_empty(),
-                    self.last_process_time,
-                    self.exporter.active_jobs(),
-                );
-
-                if (effect_opacity - old_opacity).abs() > 0.001 {
-                    self.params.finishing.transparency = 1.0 - (effect_opacity / 100.0);
-                    self.is_dirty = true;
-                }
-
-                if tb_resp.open_clicked {
-                    self.open_image_dialog();
-                }
-                if tb_resp.export_clicked {
-                    self.queue_export_dialog();
-                }
-                if tb_resp.paste_clipboard_clicked {
-                    self.paste_image_from_clipboard();
-                }
-                if tb_resp.undo_clicked {
-                    self.undo();
-                }
-                if tb_resp.redo_clicked {
-                    self.redo();
-                }
-                if tb_resp.reset_all_clicked {
-                    self.push_undo();
-                    self.params = AdjustParams::default();
-                    self.selected_preset_name = "Neutral".to_string();
-                    self.is_dirty = true;
-                    self.toasts.info("Reset all parameters to default");
-                }
-                if tb_resp.fit_clicked {
-                    self.zoom = self.fit_zoom(ui.ctx());
-                    self.pan = egui::Vec2::ZERO;
-                }
-                if tb_resp.zoom_100_clicked {
-                    self.zoom = 1.0;
-                }
-                if tb_resp.settings_clicked {
-                    self.show_settings_modal = true;
-                }
-                if tb_resp.shortcuts_clicked {
-                    self.show_shortcuts_modal = true;
-                }
-            });
-
-        // ==========================================
-        // 2. BOTTOM STATUS BAR (24px)
-        // ==========================================
-        egui::TopBottomPanel::bottom("bottom_status_panel")
-            .exact_height(HEIGHT_STATUSBAR)
-            .show(ctx, |ui| {
-                let dimensions = self
-                    .base_f32
-                    .as_ref()
-                    .map(|img| (img.width, img.height));
-                render_bottom_statusbar(
-                    ui,
-                    dimensions,
-                    self.zoom,
-                    self.is_rendering || self.baking || self.exporter.active_jobs() > 0,
-                    self.last_process_time,
-                    self.base_f32.is_some(),
-                );
-            });
-
-        // ==========================================
-        // 3. LEFT SIDEBAR: PRESET BROWSER (Collapsible)
-        // ==========================================
-        if self.show_sidebars {
-            egui::SidePanel::left("left_preset_panel")
-                .resizable(true)
-                .default_width(WIDTH_SIDEBAR_LEFT)
-                .width_range(220.0..=360.0)
-                .show(ctx, |ui| {
-                    let p_resp = render_presets_sidebar(
-                        ui,
-                        &self.presets,
-                        &self.selected_preset_name,
-                        &mut self.selected_collection,
-                        &mut self.preset_search,
-                        &mut self.config.favorite_presets,
-                        self.nav_texture.as_ref(),
-                        &self.config.recent_files,
-                    );
-
-                    if let Some(recent_path) = p_resp.open_recent_path {
-                        self.open_image_path(recent_path);
-                    }
-
-                    if let Some(preset) = p_resp.selected_preset {
-                        self.push_undo();
-                        self.params = preset.params.clone();
-                        self.selected_preset_name = preset.name.clone();
-                        self.is_dirty = true;
-                        self.toasts.info(format!("Applied preset: {}", preset.name));
-                    }
-
-                    if p_resp.save_custom_clicked {
-                        if let Some(path) = rfd::FileDialog::new()
-                            .add_filter("JSON Preset", &["json"])
-                            .save_file()
-                        {
-                            let custom = Preset {
-                                name: "Custom Preset".to_string(),
-                                category: "Custom".to_string(),
-                                description: "User custom configured preset".to_string(),
-                                params: self.params.clone(),
-                            };
-                            match custom
-                                .to_json()
-                                .map_err(|e| e.to_string())
-                                .and_then(|json| std::fs::write(&path, json).map_err(|e| e.to_string()))
-                            {
-                                Ok(()) => self.toasts.success("Custom preset saved"),
-                                Err(e) => self.toasts.error(format!("Failed to save preset: {}", e)),
-                            }
-                        }
-                    }
-
-                    if p_resp.load_custom_clicked {
-                        if let Some(path) = rfd::FileDialog::new()
-                            .add_filter("JSON Preset", &["json"])
-                            .pick_file()
-                        {
-                            match std::fs::read_to_string(&path) {
-                                Ok(content) => match Preset::from_json(&content) {
-                                    Ok(custom) => {
-                                        self.push_undo();
-                                        // Clamp out-of-range values from hand-edited files.
-                                        self.params = custom.params.sanitized();
-                                        self.selected_preset_name = custom.name.clone();
-                                        self.is_dirty = true;
-                                        self.toasts.success(format!("Loaded preset {}", custom.name));
-                                    }
-                                    Err(e) => self.toasts.error(format!("Invalid preset file: {}", e)),
-                                },
-                                Err(e) => self.toasts.error(format!("Failed to read preset: {}", e)),
-                            }
-                        }
-                    }
-                });
-
-            // ==========================================
-            // 4. RIGHT SIDEBAR: INSPECTOR & ACCORDION (Collapsible)
-            // ==========================================
-            egui::SidePanel::right("right_adjustment_panel")
-                .resizable(true)
-                .default_width(WIDTH_SIDEBAR_RIGHT)
-                .width_range(300.0..=480.0)
-                .show(ctx, |ui| {
-                    // Top Zone: Inspector tabs
-                    let display_size = self
-                        .image_px_size()
-                        .map(|px| px * self.zoom / ui.ctx().pixels_per_point());
-                    render_inspector_panel(
-                        ui,
-                        &mut self.inspector_tab,
-                        self.nav_texture.as_ref(),
-                        self.proc_texture.as_ref(),
-                        self.histogram.as_ref(),
-                        &mut self.pan,
-                        display_size,
-                        self.canvas_size,
-                    );
-
-                    ui.add_space(SPACE_4);
-                    ui.separator();
-                    ui.add_space(SPACE_4);
-
-                    // Bottom Zone: Accordion adjustments
-                    egui::ScrollArea::vertical()
-                        .auto_shrink([false, false])
-                        .show(ui, |ui| {
-                            let adj_resp = render_adjustments_accordion(
-                                ui,
-                                &mut self.params,
-                                &mut self.curve_channel,
-                                self.histogram.as_ref(),
-                                &mut self.is_dirty,
-                                self.layer_snapshots.len(),
-                            );
-
-                            if adj_resp.reset_all_clicked {
-                                self.push_undo();
-                                self.params = AdjustParams::default();
-                                self.selected_preset_name = "Neutral".to_string();
-                                self.is_dirty = true;
-                                self.toasts.info("Reset all adjustments");
-                            }
-
-                            if adj_resp.cancel_clicked {
-                                self.cancel_all_layers();
-                            }
-
-                            if adj_resp.apply_clicked {
-                                self.apply_layer();
-                            }
-
-                            if adj_resp.undo_layer_clicked {
-                                self.undo_layer();
-                            }
-                        });
-                });
+                    ToolbarState {
+                        view_mode: &mut self.view_mode,
+                        title: &title,
+                        subtitle: &subtitle,
+                        zoom: self.zoom,
+                        can_undo: !self.undo_stack.is_empty(),
+                        can_redo: !self.redo_stack.is_empty(),
+                        has_image: self.base_f32.is_some(),
+                        show_sidebar: self.config.show_sidebar,
+                        show_inspector: self.config.show_inspector,
+                        busy: self.is_rendering || self.baking || self.exporter.active_jobs() > 0,
+                    },
+                )
+            })
+            .inner;
+        for action in toolbar_actions {
+            self.handle_toolbar(ctx, action);
         }
 
-        // ==========================================
-        // 5. CENTER CANVAS VIEWPORT
-        // ==========================================
-        egui::CentralPanel::default().show(ctx, |ui| {
-            let image_px = self.image_px_size().unwrap_or(egui::Vec2::ZERO);
-            let tile = self.visible_tile();
-            let canvas_resp = render_central_canvas(
-                ui,
-                self.view_mode,
-                &mut self.split_ratio,
-                &mut self.zoom,
-                &mut self.pan,
-                image_px,
-                self.proc_texture.as_ref(),
-                self.orig_texture.as_ref(),
-                tile.as_ref().map(|(tex, rect)| (tex, *rect)),
-                self.base_f32.is_some(),
-            );
-
-            self.canvas_size = canvas_resp.canvas_size;
-            self.canvas_rect = Some(canvas_resp.canvas_rect);
-            self.canvas_img_rect = canvas_resp.img_rect;
-
-            if let Some(path) = canvas_resp.dropped_path {
-                self.open_image_path(path);
+        // ---- Sidebar ---------------------------------------------------------
+        if self.config.show_sidebar {
+            let old_library = self.library.clone();
+            let actions = egui::SidePanel::left("sidebar")
+                .default_width(WIDTH_SIDEBAR)
+                .width_range(250.0..=440.0)
+                .frame(egui::Frame::new().fill(p.sidebar).inner_margin(egui::Margin::symmetric(10, 0)))
+                .show_separator_line(true)
+                .show(ctx, |ui| {
+                    sidebar(
+                        ui,
+                        SidebarState {
+                            library: &mut self.library,
+                            search: &mut self.preset_search,
+                            collections: &self.collections,
+                            factory: &self.presets,
+                            user: &self.user_presets,
+                            favorites: &self.config.favorite_presets,
+                            selected_preset: &self.selected_preset_name,
+                            thumbs: &self.thumbs,
+                        },
+                    )
+                })
+                .inner;
+            for action in actions {
+                self.handle_sidebar(action);
             }
-
-            if canvas_resp.open_clicked {
-                self.open_image_dialog();
+            if self.library != old_library {
+                self.preset_search.clear();
             }
-        });
+        }
 
-        // Ask for a full-resolution tile of whatever is now on screen
+        // ---- Inspector ---------------------------------------------------------
+        if self.config.show_inspector {
+            let before = self.params.clone();
+            let display_size = self.image_px_size().map(|px| px * self.zoom / ctx.pixels_per_point());
+            let actions = egui::SidePanel::right("inspector")
+                .default_width(WIDTH_INSPECTOR)
+                .width_range(280.0..=460.0)
+                .frame(egui::Frame::new().fill(p.sidebar).inner_margin(egui::Margin::symmetric(12, 0)))
+                .show(ctx, |ui| {
+                    inspector(
+                        ui,
+                        InspectorState {
+                            params: &mut self.params,
+                            info_tab: &mut self.info_tab,
+                            curve_channel: &mut self.curve_channel,
+                            histogram: self.histogram.as_ref(),
+                            nav_texture: self.nav_texture.as_ref(),
+                            proc_texture: self.proc_texture.as_ref(),
+                            pan: &mut self.pan,
+                            display_size,
+                            canvas_size: self.canvas_size,
+                            layer_count: self.layer_snapshots.len(),
+                            baking: self.baking,
+                            has_image: self.base_f32.is_some(),
+                            preset_name: &self.selected_preset_name,
+                        },
+                    )
+                })
+                .inner;
+            for action in actions {
+                self.handle_inspector(action, &before);
+            }
+        }
+
+        // ---- Canvas ------------------------------------------------------------
+        let image_px = self.image_px_size().unwrap_or(egui::Vec2::ZERO);
+        let tile = self.visible_tile();
+        let canvas_resp = egui::CentralPanel::default()
+            .frame(egui::Frame::new().fill(p.canvas))
+            .show(ctx, |ui| {
+                canvas(
+                    ui,
+                    CanvasState {
+                        view_mode: self.view_mode,
+                        split_ratio: &mut self.split_ratio,
+                        zoom: &mut self.zoom,
+                        pan: &mut self.pan,
+                        image_px,
+                        proc_texture: self.proc_texture.as_ref(),
+                        orig_texture: self.orig_texture.as_ref(),
+                        tile: tile.as_ref().map(|(t, r)| (t, *r)),
+                    },
+                )
+            })
+            .inner;
+        self.canvas_size = canvas_resp.canvas_size;
+        self.canvas_rect = Some(canvas_resp.canvas_rect);
+        self.canvas_img_rect = canvas_resp.img_rect;
+        if let Some(path) = canvas_resp.dropped_path {
+            self.open_image_path(path);
+        }
+        if canvas_resp.open_clicked {
+            self.commands.push(Command::Open);
+        }
+
+        // Any zoom/pan change this frame that didn't come from Fit turns auto-fit off.
+        if self.auto_fit == view_before.2 && (self.zoom != view_before.0 || self.pan != view_before.1) {
+            self.auto_fit = false;
+        }
+        if self.auto_fit && self.base_f32.is_some() {
+            let fit = self.fit_zoom(ctx);
+            if (self.zoom - fit).abs() > 1e-4 || self.pan != egui::Vec2::ZERO {
+                self.zoom = fit;
+                self.pan = egui::Vec2::ZERO;
+                ctx.request_repaint();
+            }
+        }
+
         self.update_tile_request(ctx);
-
-        // Overlay: Keyboard Shortcuts Cheat Sheet
-        self.render_shortcuts_modal(ctx);
-
-        // Overlay: Preferences & Theme Settings
-        self.render_settings_modal(ctx);
-
-        // Overlay: In-App Toast Notifications
-        self.toasts.show(ctx);
+        self.render_dialogs(ctx);
+        self.toasts.show(ctx, canvas_resp.canvas_rect);
     }
 }

@@ -1,7 +1,7 @@
 {
   "name": "Dramatic",
-  "category": "HDR & Stylized",
-  "description": "Cinematic, gritty contrast with extreme micro-details and desaturated tones.",
+  "category": "Vibrant Collection",
+  "description": "Cinematic gritty contrast with muted colour",
   "params": {
     "basic_exposure": {
       "enabled": true,
@@ -22,9 +22,10 @@
     "details": {
       "enabled": true,
       "strength": 2.1,
-      "boost": 1.5,
+      "detail_boost": 1.5,
       "threshold": 0.06,
       "radius": 1.5,
+      "sharpen": 0.4,
       "process_independently": true
     },
     "color": {
@@ -37,8 +38,33 @@
     },
     "noise": {
       "enabled": true,
-      "suppression": 0.1,
-      "amount": 0.3
+      "suppression": 0.0,
+      "amount": 0.5
+    },
+    "stylize": {
+      "enabled": true,
+      "sketch": 0.0,
+      "sketch_radius": 4.0,
+      "sketch_color": 0.0,
+      "glow": 0.0,
+      "glow_radius": 12.0,
+      "posterize": 0.0,
+      "solarize": 0.0,
+      "invert": 0.0
+    },
+    "tone": {
+      "enabled": true,
+      "monochrome": 0.0,
+      "mono_mix": [
+        0.3,
+        0.59,
+        0.11
+      ],
+      "shadow_hue": 30.0,
+      "shadow_strength": 0.0,
+      "highlight_hue": 45.0,
+      "highlight_strength": 0.0,
+      "balance": 0.0
     },
     "curve": {
       "enabled": true,
@@ -48,18 +74,21 @@
           "y": 0.0
         },
         {
-          "x": 0.3,
-          "y": 0.22
+          "x": 0.25,
+          "y": 0.18
         },
         {
-          "x": 0.7,
-          "y": 0.78
+          "x": 0.75,
+          "y": 0.82
         },
         {
           "x": 1.0,
           "y": 1.0
         }
-      ]
+      ],
+      "red": [],
+      "green": [],
+      "blue": []
     },
     "finishing": {
       "enabled": true,
@@ -74,6 +103,15 @@
       "grain": {
         "amount": 0.15,
         "size": 1.0
+      },
+      "border": {
+        "enabled": false,
+        "thickness": 0.0,
+        "color": [
+          1.0,
+          1.0,
+          1.0
+        ]
       }
     }
   }

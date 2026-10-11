@@ -1,679 +1,135 @@
-use crate::curve_widget::render_curve_editor;
+//! The "Adjust" pane: one collapsible section per processing stage.
+
+use crate::curve_widget::{curve_editor, CurveChannel};
 use crate::icons::*;
-use crate::widgets::section::render_section_header;
-use crate::widgets::slider::{precision_slider_row, precision_slider_u32};
+use crate::theme::*;
+use crate::widgets::section::section;
+use crate::widgets::slider::{slider, slider_u32, SliderSpec as S};
 use adjust_core::{AdjustParams, HistogramData};
-use eframe::egui::{self, Color32, Ui};
+use eframe::egui::{self, Ui};
 
-pub struct AdjustmentResponse {
-    pub reset_all_clicked: bool,
-    pub apply_clicked: bool,
-    pub cancel_clicked: bool,
-    pub undo_layer_clicked: bool,
-}
-
-pub fn render_adjustments_accordion(
+/// Draws every adjustment section. Returns true if any parameter changed.
+pub fn adjustments(
     ui: &mut Ui,
     params: &mut AdjustParams,
-    active_channel: &mut crate::curve_widget::CurveChannel,
+    curve_channel: &mut CurveChannel,
     histogram: Option<&HistogramData>,
-    is_dirty: &mut bool,
-    layer_count: usize,
-) -> AdjustmentResponse {
-    let mut resp = AdjustmentResponse {
-        reset_all_clicked: false,
-        apply_clicked: false,
-        cancel_clicked: false,
-        undo_layer_clicked: false,
-    };
+) -> bool {
+    let d = AdjustParams::default();
+    let mut changed = false;
 
-    let default_params = AdjustParams::default();
-
-    // ----------------------------------------------------
-    // Section 1: Basic Exposure
-    // ----------------------------------------------------
-    let default_be = default_params.basic_exposure.clone();
-    let is_be_modified = params.basic_exposure != default_be;
-    let (h_resp, mut state) = render_section_header(
-        ui,
-        "tab_basic_exposure",
-        ICON_SUN,
-        "Basic Exposure",
-        is_be_modified,
-        params.basic_exposure.enabled,
-        true,
-    );
-    if h_resp.toggled_bypass {
-        params.basic_exposure.enabled = !params.basic_exposure.enabled;
-        *is_dirty = true;
-    }
-    if h_resp.reset_clicked {
-        params.basic_exposure = default_be;
-        *is_dirty = true;
-    }
-    state.show_body_unindented(ui, |ui| {
-        ui.add_space(crate::theme::SPACE_4);
-        let panel_bg = crate::theme::theme_surface_panel(ui.visuals());
-        egui::Frame::new()
-            .fill(panel_bg)
-            .inner_margin(egui::Margin::symmetric(4, 4))
-            .show(ui, |ui| {
-                let p = &mut params.basic_exposure;
-                precision_slider_row(
-                    ui,
-                    "Brightness",
-                    &mut p.brightness,
-                    -1.0..=1.0,
-                    0.0,
-                    is_dirty,
-                    "Overall image brightness adjustment",
-                );
-                precision_slider_row(
-                    ui,
-                    "Contrast",
-                    &mut p.contrast,
-                    -1.0..=1.0,
-                    0.0,
-                    is_dirty,
-                    "Overall global tonal contrast",
-                );
-                precision_slider_row(
-                    ui,
-                    "Boost Blacks",
-                    &mut p.boost_blacks,
-                    0.0..=1.0,
-                    0.0,
-                    is_dirty,
-                    "Deepens shadows without clipping dark tones",
-                );
-                precision_slider_row(
-                    ui,
-                    "Boost Whites",
-                    &mut p.boost_whites,
-                    0.0..=1.0,
-                    0.0,
-                    is_dirty,
-                    "Expands highlights towards clean white point",
-                );
-            });
-        ui.add_space(crate::theme::SPACE_4);
-    });
-
-    // ----------------------------------------------------
-    // Section 2: Adaptive Exposure
-    // ----------------------------------------------------
-    let default_ae = default_params.adaptive_exposure.clone();
-    let is_ae_modified = params.adaptive_exposure != default_ae;
-    let (h_resp, mut state) = render_section_header(
-        ui,
-        "tab_adaptive_exposure",
-        ICON_EYE,
-        "Adaptive Exposure",
-        is_ae_modified,
-        params.adaptive_exposure.enabled,
-        true,
-    );
-    if h_resp.toggled_bypass {
-        params.adaptive_exposure.enabled = !params.adaptive_exposure.enabled;
-        *is_dirty = true;
-    }
-    if h_resp.reset_clicked {
-        params.adaptive_exposure = default_ae;
-        *is_dirty = true;
-    }
-    state.show_body_unindented(ui, |ui| {
-        ui.add_space(crate::theme::SPACE_4);
-        let panel_bg = crate::theme::theme_surface_panel(ui.visuals());
-        egui::Frame::new()
-            .fill(panel_bg)
-            .inner_margin(egui::Margin::symmetric(4, 4))
-            .show(ui, |ui| {
-                let p = &mut params.adaptive_exposure;
-                precision_slider_row(
-                    ui,
-                    "Adaptive Exp",
-                    &mut p.adaptive_exposure,
-                    0.0..=3.0,
-                    0.0,
-                    is_dirty,
-                    "Local tone mapping strength for shadow recovery",
-                );
-                precision_slider_u32(
-                    ui,
-                    "Regions",
-                    &mut p.regions,
-                    1..=30,
-                    10,
-                    is_dirty,
-                    "Number of local subdivisions for tone evaluation",
-                );
-                precision_slider_row(
-                    ui,
-                    "Contrast",
-                    &mut p.contrast,
-                    -1.0..=1.0,
-                    0.0,
-                    is_dirty,
-                    "Local dynamic contrast shaping",
-                );
-                precision_slider_row(
-                    ui,
-                    "Brightness",
-                    &mut p.brightness,
-                    -1.0..=1.0,
-                    0.0,
-                    is_dirty,
-                    "Adaptive midtone brightness compensation",
-                );
-                precision_slider_row(
-                    ui,
-                    "Protect High",
-                    &mut p.protect_highlights,
-                    0.0..=1.0,
-                    0.0,
-                    is_dirty,
-                    "Prevents specular highlights from blowing out",
-                );
-                precision_slider_row(
-                    ui,
-                    "Protect Shad",
-                    &mut p.protect_shadows,
-                    0.0..=1.0,
-                    0.0,
-                    is_dirty,
-                    "Prevents deep blacks from crushing",
-                );
-            });
-        ui.add_space(crate::theme::SPACE_4);
-    });
-
-    // ----------------------------------------------------
-    // Section 3: Details & Clarity
-    // ----------------------------------------------------
-    let default_det = default_params.details.clone();
-    let is_det_modified = params.details != default_det;
-    let (h_resp, mut state) = render_section_header(
-        ui,
-        "tab_details",
-        ICON_SPARKLES,
-        "Details & Clarity",
-        is_det_modified,
-        params.details.enabled,
-        true,
-    );
-    if h_resp.toggled_bypass {
-        params.details.enabled = !params.details.enabled;
-        *is_dirty = true;
-    }
-    if h_resp.reset_clicked {
-        params.details = default_det;
-        *is_dirty = true;
-    }
-    state.show_body_unindented(ui, |ui| {
-        ui.add_space(crate::theme::SPACE_4);
-        let panel_bg = crate::theme::theme_surface_panel(ui.visuals());
-        egui::Frame::new()
-            .fill(panel_bg)
-            .inner_margin(egui::Margin::symmetric(4, 4))
-            .show(ui, |ui| {
-                let p = &mut params.details;
-                precision_slider_row(
-                    ui,
-                    "Strength",
-                    &mut p.strength,
-                    -1.0..=3.0,
-                    0.0,
-                    is_dirty,
-                    "Clarity and micro-contrast intensity",
-                );
-                precision_slider_row(
-                    ui,
-                    "Detail Boost",
-                    &mut p.detail_boost,
-                    0.0..=3.0,
-                    1.0,
-                    is_dirty,
-                    "Fine edge and texture enhancement multiplier",
-                );
-                precision_slider_row(
-                    ui,
-                    "Threshold",
-                    &mut p.threshold,
-                    0.0..=1.0,
-                    0.10,
-                    is_dirty,
-                    "Edge sensitivity threshold to prevent noise pickup",
-                );
-                precision_slider_row(
-                    ui,
-                    "Radius",
-                    &mut p.radius,
-                    0.5..=30.0,
-                    1.0,
-                    is_dirty,
-                    "Kernel size for local detail extraction",
-                );
-                precision_slider_row(
-                    ui,
-                    "Sharpen",
-                    &mut p.sharpen,
-                    0.0..=2.0,
-                    0.0,
-                    is_dirty,
-                    "High-frequency unsharp mask sharpening",
-                );
-
-                ui.add_space(crate::theme::SPACE_4);
-                if ui
-                    .checkbox(
-                        &mut p.process_independently,
-                        "Process Details Independently",
-                    )
-                    .on_hover_text(
-                        "Extracts details from original un-tone-mapped image to avoid halos",
-                    )
-                    .changed()
-                {
-                    *is_dirty = true;
+    // Each section: (state struct, default) -> header toggle/reset + sliders.
+    macro_rules! stage {
+        ($field:ident, $id:expr, $icon:expr, $title:expr, $open:expr, |$ui:ident, $p:ident| $body:block) => {{
+            let modified = params.$field != d.$field;
+            let enabled = params.$field.enabled;
+            let r = section(ui, $id, $icon, $title, enabled, modified, $open, |$ui| {
+                let $p = &mut params.$field;
+                if $body {
+                    changed = true;
                 }
             });
-        ui.add_space(crate::theme::SPACE_4);
-    });
-
-    // ----------------------------------------------------
-    // Section 4: Color & Vibrance
-    // ----------------------------------------------------
-    let default_col = default_params.color.clone();
-    let is_col_modified = params.color != default_col;
-    let (h_resp, mut state) = render_section_header(
-        ui,
-        "tab_color",
-        ICON_PALETTE,
-        "Color & Vibrance",
-        is_col_modified,
-        params.color.enabled,
-        false,
-    );
-    if h_resp.toggled_bypass {
-        params.color.enabled = !params.color.enabled;
-        *is_dirty = true;
-    }
-    if h_resp.reset_clicked {
-        params.color = default_col;
-        *is_dirty = true;
-    }
-    state.show_body_unindented(ui, |ui| {
-        ui.add_space(crate::theme::SPACE_4);
-        let panel_bg = crate::theme::theme_surface_panel(ui.visuals());
-        egui::Frame::new()
-            .fill(panel_bg)
-            .inner_margin(egui::Margin::symmetric(4, 4))
-            .show(ui, |ui| {
-                let p = &mut params.color;
-                precision_slider_row(
-                    ui,
-                    "Adaptive Sat",
-                    &mut p.adaptive_saturation,
-                    -1.0..=2.0,
-                    0.0,
-                    is_dirty,
-                    "Intelligent vibrance targeting muted colors first",
-                );
-                precision_slider_u32(
-                    ui,
-                    "Color Regions",
-                    &mut p.color_regions,
-                    1..=30,
-                    10,
-                    is_dirty,
-                    "Subdivisions for regional color evaluation",
-                );
-                precision_slider_row(
-                    ui,
-                    "Saturation",
-                    &mut p.saturation,
-                    -1.0..=1.0,
-                    0.0,
-                    is_dirty,
-                    "Linear color saturation boost/cut",
-                );
-                precision_slider_row(
-                    ui,
-                    "Sat Boost",
-                    &mut p.saturation_boost,
-                    0.0..=2.0,
-                    1.0,
-                    is_dirty,
-                    "Saturation scaling ceiling multiplier",
-                );
-                precision_slider_row(
-                    ui,
-                    "Hue Shift",
-                    &mut p.hue,
-                    -180.0..=180.0,
-                    0.0,
-                    is_dirty,
-                    "Global hue angle rotation in degrees",
-                );
-            });
-        ui.add_space(crate::theme::SPACE_4);
-    });
-
-    // ----------------------------------------------------
-    // Section 5: Noise Suppression
-    // ----------------------------------------------------
-    let default_nse = default_params.noise.clone();
-    let is_nse_modified = params.noise != default_nse;
-    let (h_resp, mut state) = render_section_header(
-        ui,
-        "tab_noise",
-        ICON_VOLUME_OFF,
-        "Noise Suppression",
-        is_nse_modified,
-        params.noise.enabled,
-        false,
-    );
-    if h_resp.toggled_bypass {
-        params.noise.enabled = !params.noise.enabled;
-        *is_dirty = true;
-    }
-    if h_resp.reset_clicked {
-        params.noise = default_nse;
-        *is_dirty = true;
-    }
-    state.show_body_unindented(ui, |ui| {
-        ui.add_space(crate::theme::SPACE_4);
-        let panel_bg = crate::theme::theme_surface_panel(ui.visuals());
-        egui::Frame::new()
-            .fill(panel_bg)
-            .inner_margin(egui::Margin::symmetric(4, 4))
-            .show(ui, |ui| {
-                let p = &mut params.noise;
-                precision_slider_row(
-                    ui,
-                    "Suppression",
-                    &mut p.suppression,
-                    0.0..=1.0,
-                    0.0,
-                    is_dirty,
-                    "Bilateral denoising smoothing strength",
-                );
-                precision_slider_row(
-                    ui,
-                    "Amount",
-                    &mut p.amount,
-                    0.0..=1.0,
-                    0.50,
-                    is_dirty,
-                    "Edge-preserving threshold for high-ISO grain clean",
-                );
-            });
-        ui.add_space(crate::theme::SPACE_4);
-    });
-
-    // ----------------------------------------------------
-    // Section 6: Curve Tool
-    // ----------------------------------------------------
-    let default_crv = default_params.curve.clone();
-    let is_crv_modified = params.curve != default_crv;
-    let (h_resp, mut state) = render_section_header(
-        ui,
-        "tab_curve",
-        ICON_VECTOR_BEZIER,
-        "Tone Curves",
-        is_crv_modified,
-        params.curve.enabled,
-        false,
-    );
-    if h_resp.toggled_bypass {
-        params.curve.enabled = !params.curve.enabled;
-        *is_dirty = true;
-    }
-    if h_resp.reset_clicked {
-        params.curve = default_crv;
-        *is_dirty = true;
-    }
-    state.show_body_unindented(ui, |ui| {
-        ui.add_space(crate::theme::SPACE_4);
-        let panel_bg = crate::theme::theme_surface_panel(ui.visuals());
-        egui::Frame::new()
-            .fill(panel_bg)
-            .inner_margin(egui::Margin::symmetric(4, 4))
-            .show(ui, |ui| {
-                render_curve_editor(ui, &mut params.curve, histogram, active_channel, is_dirty);
-            });
-        ui.add_space(crate::theme::SPACE_4);
-    });
-
-    // ----------------------------------------------------
-    // Section 7: Finishing Touches
-    // ----------------------------------------------------
-    let default_fin = default_params.finishing.clone();
-    let is_fin_modified = params.finishing != default_fin;
-    let (h_resp, mut state) = render_section_header(
-        ui,
-        "tab_finishing",
-        ICON_WAND,
-        "Finishing Touches",
-        is_fin_modified,
-        params.finishing.enabled,
-        false,
-    );
-    if h_resp.toggled_bypass {
-        params.finishing.enabled = !params.finishing.enabled;
-        *is_dirty = true;
-    }
-    if h_resp.reset_clicked {
-        params.finishing = default_fin;
-        *is_dirty = true;
-    }
-    state.show_body_unindented(ui, |ui| {
-        ui.add_space(crate::theme::SPACE_4);
-        let panel_bg = crate::theme::theme_surface_panel(ui.visuals());
-        egui::Frame::new()
-            .fill(panel_bg)
-            .inner_margin(egui::Margin::symmetric(4, 4))
-            .show(ui, |ui| {
-                let p = &mut params.finishing;
-                precision_slider_row(
-                    ui,
-                    "Transparency",
-                    &mut p.transparency,
-                    0.0..=1.0,
-                    0.0,
-                    is_dirty,
-                    "Blend factor with original unprocessed image",
-                );
-                precision_slider_row(
-                    ui,
-                    "Warmth",
-                    &mut p.warmth,
-                    -1.0..=1.0,
-                    0.0,
-                    is_dirty,
-                    "Kelvin temperature balance (Cool blue to Warm gold)",
-                );
-
-                ui.add_space(crate::theme::SPACE_8);
-                ui.label(
-                    egui::RichText::new("VIGNETTE")
-                        .size(11.0)
-                        .strong()
-                        .color(crate::theme::TEXT_SECONDARY),
-                );
-                precision_slider_row(
-                    ui,
-                    "Amount",
-                    &mut p.vignette.amount,
-                    -1.0..=1.0,
-                    0.0,
-                    is_dirty,
-                    "Vignette intensity (darken corners or high key)",
-                );
-                precision_slider_row(
-                    ui,
-                    "Size",
-                    &mut p.vignette.size,
-                    0.1..=1.0,
-                    0.50,
-                    is_dirty,
-                    "Radial falloff span radius",
-                );
-                precision_slider_row(
-                    ui,
-                    "Transition",
-                    &mut p.vignette.transition,
-                    0.0..=1.0,
-                    0.50,
-                    is_dirty,
-                    "Feather softness of the vignette edge",
-                );
-                precision_slider_row(
-                    ui,
-                    "Roundness",
-                    &mut p.vignette.roundness,
-                    0.0..=1.0,
-                    0.0,
-                    is_dirty,
-                    "Circular vs rectangular aspect shape",
-                );
-
-                ui.add_space(crate::theme::SPACE_8);
-                ui.label(
-                    egui::RichText::new("FILM GRAIN")
-                        .size(11.0)
-                        .strong()
-                        .color(crate::theme::TEXT_SECONDARY),
-                );
-                precision_slider_row(
-                    ui,
-                    "Grain Amount",
-                    &mut p.grain.amount,
-                    0.0..=1.0,
-                    0.0,
-                    is_dirty,
-                    "Organic analog film grain overlay",
-                );
-                precision_slider_row(
-                    ui,
-                    "Grain Size",
-                    &mut p.grain.size,
-                    0.5..=3.0,
-                    1.0,
-                    is_dirty,
-                    "Grain cluster particle scale",
-                );
-
-                ui.add_space(crate::theme::SPACE_8);
-                ui.label(
-                    egui::RichText::new("BORDER FRAME")
-                        .size(11.0)
-                        .strong()
-                        .color(crate::theme::TEXT_SECONDARY),
-                );
-                if ui
-                    .checkbox(&mut p.border.enabled, "Enable Clean Border")
-                    .changed()
-                {
-                    *is_dirty = true;
-                }
-                precision_slider_row(
-                    ui,
-                    "Thickness",
-                    &mut p.border.thickness,
-                    0.0..=0.15,
-                    0.0,
-                    is_dirty,
-                    "Border inset thickness relative to frame",
-                );
-            });
-        ui.add_space(crate::theme::SPACE_4);
-    });
-
-    ui.add_space(crate::theme::SPACE_16);
-
-    // ----------------------------------------------------
-    // Sticky Footer Section: Layer Stack & Apply / Cancel Actions
-    // ----------------------------------------------------
-    let footer_bg = crate::theme::theme_surface_card(ui.visuals());
-    let border_col = crate::theme::theme_border(ui.visuals());
-    egui::Frame::new()
-        .fill(footer_bg)
-        .stroke(egui::Stroke::new(1.0_f32, border_col))
-        .corner_radius(crate::theme::RADIUS_CONTROL)
-        .inner_margin(egui::Margin::symmetric(12, 10))
-        .show(ui, |ui| {
-            if layer_count > 0 {
-                ui.horizontal(|ui| {
-                    ui.label(
-                        egui::RichText::new(format!(
-                            "{} Stack: {} Layer{}",
-                            ICON_HISTORY,
-                            layer_count,
-                            if layer_count > 1 { "s" } else { "" }
-                        ))
-                        .size(12.0)
-                        .color(crate::theme::ACCENT),
-                    );
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if ui
-                            .button(format!("{} Pop Layer", ICON_ARROW_BACK_UP))
-                            .on_hover_text("Undo last baked adjustment layer")
-                            .clicked()
-                        {
-                            resp.undo_layer_clicked = true;
-                        }
-                    });
-                });
-                ui.add_space(crate::theme::SPACE_8);
-                ui.separator();
-                ui.add_space(crate::theme::SPACE_8);
+            if r.toggled {
+                params.$field.enabled = !params.$field.enabled;
+                changed = true;
             }
+            if r.reset {
+                params.$field = d.$field.clone();
+                changed = true;
+            }
+        }};
+    }
 
+    stage!(basic_exposure, "sec_light", ICON_SUN, "Light", true, |ui, p| {
+        slider(ui, &mut p.brightness, S::new("Brightness", -1.0..=1.0, 0.0).tooltip("Overall brightness"))
+            | slider(ui, &mut p.contrast, S::new("Contrast", -1.0..=1.0, 0.0).tooltip("Global contrast around mid-grey"))
+            | slider(ui, &mut p.boost_blacks, S::new("Blacks", 0.0..=1.0, 0.0).tooltip("Deepen the shadows"))
+            | slider(ui, &mut p.boost_whites, S::new("Whites", 0.0..=1.0, 0.0).tooltip("Brighten the highlights"))
+    });
+
+    stage!(adaptive_exposure, "sec_adaptive", ICON_CONTRAST, "Adaptive Exposure", true, |ui, p| {
+        slider(ui, &mut p.adaptive_exposure, S::new("Amount", 0.0..=3.0, 0.0).tooltip("Local tone mapping strength (HDR look)"))
+            | slider_u32(ui, &mut p.regions, "Regions", 1..=30, 10, "Fewer regions = broader, smoother tone zones")
+            | slider(ui, &mut p.contrast, S::new("Regional Contrast", -1.0..=1.0, 0.0))
+            | slider(ui, &mut p.brightness, S::new("Regional Brightness", -1.0..=1.0, 0.0))
+            | slider(ui, &mut p.protect_highlights, S::new("Protect Highlights", 0.0..=1.0, 0.0))
+            | slider(ui, &mut p.protect_shadows, S::new("Protect Shadows", 0.0..=1.0, 0.0))
+    });
+
+    stage!(details, "sec_details", ICON_SPARKLES, "Detail", true, |ui, p| {
+        let mut c = slider(ui, &mut p.strength, S::new("Strength", -1.0..=3.0, 0.0).tooltip("Negative values smooth, positive values sharpen micro-contrast"))
+            | slider(ui, &mut p.detail_boost, S::new("Small Detail Boost", 0.0..=3.0, 1.0))
+            | slider(ui, &mut p.threshold, S::new("Threshold", 0.0..=1.0, 0.10).tooltip("Ignore texture below this level"))
+            | slider(ui, &mut p.radius, S::new("Radius", 0.5..=30.0, 1.0).decimals(1).tooltip("Size of detail being enhanced"))
+            | slider(ui, &mut p.sharpen, S::new("Sharpen", 0.0..=2.0, 0.0));
+        c |= ui.checkbox(&mut p.process_independently, "Process before tone mapping").changed();
+        c
+    });
+
+    stage!(color, "sec_color", ICON_PALETTE, "Color", true, |ui, p| {
+        slider(ui, &mut p.adaptive_saturation, S::new("Vibrance", -1.0..=2.0, 0.0).tooltip("Boosts muted colours, protects saturated ones"))
+            | slider(ui, &mut p.saturation_boost, S::new("Vibrance Boost", 0.0..=2.0, 1.0))
+            | slider(ui, &mut p.saturation, S::new("Saturation", -1.0..=1.0, 0.0))
+            | slider(ui, &mut p.hue, S::new("Hue Shift", -180.0..=180.0, 0.0).decimals(0).suffix("°"))
+    });
+
+    stage!(noise, "sec_noise", ICON_DROPLET, "Noise Reduction", false, |ui, p| {
+        slider(ui, &mut p.suppression, S::new("Strength", 0.0..=1.0, 0.0))
+            | slider(ui, &mut p.amount, S::new("Smoothness", 0.0..=1.0, 0.5).tooltip("Filter size"))
+    });
+
+    stage!(stylize, "sec_stylize", ICON_BRUSH, "Creative", false, |ui, p| {
+        slider(ui, &mut p.sketch, S::new("Sketch", 0.0..=1.0, 0.0).tooltip("Pencil / colour drawing effect"))
+            | slider(ui, &mut p.sketch_radius, S::new("Line Width", 1.0..=20.0, 4.0).decimals(1))
+            | slider(ui, &mut p.sketch_color, S::new("Sketch Colour", 0.0..=1.0, 0.0).tooltip("0 = graphite, 1 = full colour"))
+            | slider(ui, &mut p.glow, S::new("Glow", 0.0..=1.0, 0.0).tooltip("Soft diffusion bloom"))
+            | slider(ui, &mut p.glow_radius, S::new("Glow Radius", 2.0..=60.0, 12.0).decimals(0))
+            | slider(ui, &mut p.posterize, S::new("Posterize", 0.0..=1.0, 0.0))
+            | slider(ui, &mut p.solarize, S::new("Solarize", 0.0..=1.0, 0.0))
+            | slider(ui, &mut p.invert, S::new("Invert", 0.0..=1.0, 0.0))
+    });
+
+    stage!(tone, "sec_tone", ICON_CIRCLE_HALF, "Black & White and Toning", false, |ui, p| {
+        let mut c = slider(ui, &mut p.monochrome, S::new("Black & White", 0.0..=1.0, 0.0));
+        let [mut r, mut g, mut b] = p.mono_mix;
+        c |= slider(ui, &mut r, S::new("Red Filter", -1.0..=2.0, 0.30))
+            | slider(ui, &mut g, S::new("Green Filter", -1.0..=2.0, 0.59))
+            | slider(ui, &mut b, S::new("Blue Filter", -1.0..=2.0, 0.11));
+        p.mono_mix = [r, g, b];
+        ui.add_space(SPACE_4);
+        c |= slider(ui, &mut p.shadow_hue, S::new("Shadow Tint", 0.0..=360.0, 30.0).decimals(0).suffix("°").hue())
+            | slider(ui, &mut p.shadow_strength, S::new("Shadow Amount", 0.0..=1.0, 0.0))
+            | slider(ui, &mut p.highlight_hue, S::new("Highlight Tint", 0.0..=360.0, 45.0).decimals(0).suffix("°").hue())
+            | slider(ui, &mut p.highlight_strength, S::new("Highlight Amount", 0.0..=1.0, 0.0))
+            | slider(ui, &mut p.balance, S::new("Balance", -1.0..=1.0, 0.0));
+        c
+    });
+
+    stage!(curve, "sec_curve", ICON_SWATCH, "Curves", false, |ui, p| {
+        curve_editor(ui, p, histogram, curve_channel)
+    });
+
+    stage!(finishing, "sec_finish", ICON_APERTURE, "Finishing", false, |ui, p| {
+        let mut c = slider(ui, &mut p.warmth, S::new("Warmth", -1.0..=1.0, 0.0).tooltip("Cool ← → Warm"));
+        ui.add_space(SPACE_4);
+        c |= slider(ui, &mut p.vignette.amount, S::new("Vignette", -1.0..=1.0, 0.0).tooltip("Negative darkens, positive lightens the edges"))
+            | slider(ui, &mut p.vignette.size, S::new("Vignette Size", 0.1..=1.0, 0.5))
+            | slider(ui, &mut p.vignette.transition, S::new("Vignette Softness", 0.0..=1.0, 0.5))
+            | slider(ui, &mut p.vignette.roundness, S::new("Vignette Roundness", 0.0..=1.0, 0.0));
+        ui.add_space(SPACE_4);
+        c |= slider(ui, &mut p.grain.amount, S::new("Grain", 0.0..=1.0, 0.0))
+            | slider(ui, &mut p.grain.size, S::new("Grain Size", 0.5..=3.0, 1.0).decimals(1));
+        ui.add_space(SPACE_4);
+        c |= ui.checkbox(&mut p.border.enabled, "Border").changed();
+        if p.border.enabled {
+            c |= slider(ui, &mut p.border.thickness, S::new("Border Width", 0.0..=0.2, 0.0).decimals(3));
             ui.horizontal(|ui| {
-                let btn_reset = egui::Button::new("Reset All")
-                    .min_size(egui::vec2(80.0, crate::theme::BTN_HEIGHT_MD));
-                if ui
-                    .add(btn_reset)
-                    .on_hover_text("Revert all sliders and curves to defaults")
-                    .clicked()
-                {
-                    resp.reset_all_clicked = true;
-                }
-
-                let btn_cancel = egui::Button::new("Cancel")
-                    .min_size(egui::vec2(70.0, crate::theme::BTN_HEIGHT_MD));
-                if ui
-                    .add(btn_cancel)
-                    .on_hover_text("Clear adjustment stack and reload base")
-                    .clicked()
-                {
-                    resp.cancel_clicked = true;
-                }
-
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    let apply_btn = egui::Button::new(
-                        egui::RichText::new(format!("{} Apply (Bake)", ICON_APPLY))
-                            .strong()
-                            .color(Color32::BLACK),
-                    )
-                    .fill(crate::theme::ACCENT)
-                    .min_size(egui::vec2(110.0, crate::theme::BTN_HEIGHT_MD));
-
-                    if ui
-                        .add(apply_btn)
-                        .on_hover_text(
-                            "Bake current adjustments as a new base layer to stack more effects!",
-                        )
-                        .clicked()
-                    {
-                        resp.apply_clicked = true;
-                    }
-                });
+                ui.label(egui::RichText::new("Border Colour").size(12.5));
+                c |= ui.color_edit_button_rgb(&mut p.border.color).changed();
             });
-        });
+        }
+        c
+    });
 
-    ui.add_space(crate::theme::SPACE_12);
-
-    resp
+    changed
 }

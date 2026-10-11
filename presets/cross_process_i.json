@@ -1,0 +1,153 @@
+{
+  "name": "Cross Process I",
+  "category": "Film Collection",
+  "description": "Slide film in C-41: yellow highs, blue lows",
+  "params": {
+    "basic_exposure": {
+      "enabled": true,
+      "brightness": 0.0,
+      "contrast": 0.0,
+      "boost_blacks": 0.0,
+      "boost_whites": 0.0
+    },
+    "adaptive_exposure": {
+      "enabled": true,
+      "adaptive_exposure": 0.0,
+      "regions": 10,
+      "contrast": 0.0,
+      "brightness": 0.0,
+      "protect_highlights": 0.0,
+      "protect_shadows": 0.0
+    },
+    "details": {
+      "enabled": true,
+      "strength": 0.0,
+      "detail_boost": 1.0,
+      "threshold": 0.1,
+      "radius": 1.0,
+      "sharpen": 0.0,
+      "process_independently": true
+    },
+    "color": {
+      "enabled": true,
+      "adaptive_saturation": 0.0,
+      "color_regions": 10,
+      "saturation": 0.2,
+      "saturation_boost": 1.0,
+      "hue": 0.0
+    },
+    "noise": {
+      "enabled": true,
+      "suppression": 0.0,
+      "amount": 0.5
+    },
+    "stylize": {
+      "enabled": true,
+      "sketch": 0.0,
+      "sketch_radius": 4.0,
+      "sketch_color": 0.0,
+      "glow": 0.0,
+      "glow_radius": 12.0,
+      "posterize": 0.0,
+      "solarize": 0.0,
+      "invert": 0.0
+    },
+    "tone": {
+      "enabled": true,
+      "monochrome": 0.0,
+      "mono_mix": [
+        0.3,
+        0.59,
+        0.11
+      ],
+      "shadow_hue": 30.0,
+      "shadow_strength": 0.0,
+      "highlight_hue": 45.0,
+      "highlight_strength": 0.0,
+      "balance": 0.0
+    },
+    "curve": {
+      "enabled": true,
+      "points": [
+        {
+          "x": 0.0,
+          "y": 0.0
+        },
+        {
+          "x": 1.0,
+          "y": 1.0
+        }
+      ],
+      "red": [
+        {
+          "x": 0.0,
+          "y": 0.0
+        },
+        {
+          "x": 0.25,
+          "y": 0.18
+        },
+        {
+          "x": 0.75,
+          "y": 0.85
+        },
+        {
+          "x": 1.0,
+          "y": 1.0
+        }
+      ],
+      "green": [
+        {
+          "x": 0.0,
+          "y": 0.0
+        },
+        {
+          "x": 0.3,
+          "y": 0.27
+        },
+        {
+          "x": 0.7,
+          "y": 0.76
+        },
+        {
+          "x": 1.0,
+          "y": 1.0
+        }
+      ],
+      "blue": [
+        {
+          "x": 0.0,
+          "y": 0.2
+        },
+        {
+          "x": 1.0,
+          "y": 0.8
+        }
+      ]
+    },
+    "finishing": {
+      "enabled": true,
+      "transparency": 0.0,
+      "warmth": 0.0,
+      "vignette": {
+        "amount": 0.0,
+        "size": 0.5,
+        "transition": 0.5,
+        "roundness": 0.0
+      },
+      "grain": {
+        "amount": 0.0,
+        "size": 1.0
+      },
+      "border": {
+        "enabled": false,
+        "thickness": 0.0,
+        "color": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      }
+    }
+  }
+}

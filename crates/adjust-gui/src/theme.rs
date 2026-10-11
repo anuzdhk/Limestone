@@ -1,94 +1,210 @@
+//! Apple-style visual language: system palettes, accent colours, typography and metrics.
+//!
+//! Widgets read colours from the active [`Palette`] (see [`pal`]) instead of constants,
+//! so light/dark switching and accent changes apply everywhere at once.
+
 use eframe::egui::{self, Color32, CornerRadius, FontFamily, FontId, Stroke, TextStyle};
 use serde::{Deserialize, Serialize};
 
 // ============================================================================
-// 1. DYNAMIC THEME CONFIGURATION
+// Theme preferences
 // ============================================================================
 
-#[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Debug, Default)]
 pub enum ThemeMode {
-    DarkStudio,
-    LightStudio,
+    /// Follow the operating system's light/dark setting.
+    #[default]
+    System,
+    Light,
+    Dark,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Debug)]
-pub enum AccentTheme {
-    ElectricCyan, // #00D2FF
-    VibrantAmber, // #FFAA00
-    EmeraldGreen, // #00E676
-    RoyalPurple,  // #B388FF
-    CrimsonRed,   // #FF5252
-}
-
-impl AccentTheme {
-    pub fn color(&self) -> Color32 {
+impl ThemeMode {
+    pub fn name(&self) -> &'static str {
         match self {
-            AccentTheme::ElectricCyan => Color32::from_rgb(0, 210, 255),
-            AccentTheme::VibrantAmber => Color32::from_rgb(255, 170, 0),
-            AccentTheme::EmeraldGreen => Color32::from_rgb(0, 230, 118),
-            AccentTheme::RoyalPurple => Color32::from_rgb(179, 136, 255),
-            AccentTheme::CrimsonRed => Color32::from_rgb(255, 82, 82),
+            ThemeMode::System => "Automatic",
+            ThemeMode::Light => "Light",
+            ThemeMode::Dark => "Dark",
         }
     }
+}
 
-    pub fn hover_color(&self) -> Color32 {
-        let c = self.color();
-        Color32::from_rgb(
-            c.r().saturating_add(30),
-            c.g().saturating_add(30),
-            c.b().saturating_add(30),
-        )
-    }
+/// macOS system accent colours.
+#[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Debug, Default)]
+pub enum Accent {
+    #[default]
+    Blue,
+    Purple,
+    Pink,
+    Red,
+    Orange,
+    Yellow,
+    Green,
+    Graphite,
+}
 
-    pub fn pressed_color(&self) -> Color32 {
-        let c = self.color();
-        Color32::from_rgb(
-            c.r().saturating_sub(40),
-            c.g().saturating_sub(40),
-            c.b().saturating_sub(40),
-        )
+impl Accent {
+    pub const ALL: [Accent; 8] = [
+        Accent::Blue,
+        Accent::Purple,
+        Accent::Pink,
+        Accent::Red,
+        Accent::Orange,
+        Accent::Yellow,
+        Accent::Green,
+        Accent::Graphite,
+    ];
+
+    pub fn color(&self, dark: bool) -> Color32 {
+        let (light, dark_c) = match self {
+            Accent::Blue => ((0, 122, 255), (10, 132, 255)),
+            Accent::Purple => ((175, 82, 222), (191, 90, 242)),
+            Accent::Pink => ((255, 45, 85), (255, 55, 95)),
+            Accent::Red => ((255, 59, 48), (255, 69, 58)),
+            Accent::Orange => ((255, 149, 0), (255, 159, 10)),
+            Accent::Yellow => ((230, 180, 0), (255, 214, 10)),
+            Accent::Green => ((40, 180, 70), (48, 209, 88)),
+            Accent::Graphite => ((142, 142, 147), (152, 152, 157)),
+        };
+        let (r, g, b) = if dark { dark_c } else { light };
+        Color32::from_rgb(r, g, b)
     }
 
     pub fn name(&self) -> &'static str {
         match self {
-            AccentTheme::ElectricCyan => "Cyan",
-            AccentTheme::VibrantAmber => "Amber",
-            AccentTheme::EmeraldGreen => "Emerald",
-            AccentTheme::RoyalPurple => "Purple",
-            AccentTheme::CrimsonRed => "Crimson",
+            Accent::Blue => "Blue",
+            Accent::Purple => "Purple",
+            Accent::Pink => "Pink",
+            Accent::Red => "Red",
+            Accent::Orange => "Orange",
+            Accent::Yellow => "Yellow",
+            Accent::Green => "Green",
+            Accent::Graphite => "Graphite",
         }
     }
 }
 
 // ============================================================================
-// 2. DEFAULT COLOR TOKENS
+// Palette
 // ============================================================================
 
-pub const BG_CANVAS: Color32 = Color32::from_rgb(11, 12, 15); // #0B0C0F
-pub const SURFACE_PANEL: Color32 = Color32::from_rgb(17, 19, 24); // #111318
-pub const SURFACE_CARD: Color32 = Color32::from_rgb(23, 26, 33); // #171A21
-pub const SURFACE_RAISED: Color32 = Color32::from_rgb(31, 35, 44); // #1F232C
+/// Resolved colours for the current appearance.
+#[derive(Clone, Copy, Debug)]
+pub struct Palette {
+    pub dark: bool,
+    pub accent: Color32,
+    /// Text/icons drawn on top of `accent`.
+    pub on_accent: Color32,
+    pub window: Color32,
+    pub sidebar: Color32,
+    pub toolbar: Color32,
+    pub canvas: Color32,
+    /// Grouped "card" background inside panels.
+    pub card: Color32,
+    /// Resting fill for buttons / segmented controls / fields.
+    pub control: Color32,
+    pub control_hover: Color32,
+    /// Selected segment of a segmented control.
+    pub segment_selected: Color32,
+    pub separator: Color32,
+    pub text: Color32,
+    pub text_secondary: Color32,
+    pub text_tertiary: Color32,
+    /// Translucent accent used for sidebar selection.
+    pub selection: Color32,
+    pub track: Color32,
+    pub knob: Color32,
+    pub shadow: Color32,
+    pub star: Color32,
+    pub success: Color32,
+    pub warning: Color32,
+    pub danger: Color32,
+}
 
-pub const BORDER_SUBTLE: Color32 = Color32::from_rgb(42, 47, 58); // #2A2F3A
+impl Palette {
+    pub fn new(dark: bool, accent: Accent) -> Self {
+        let a = accent.color(dark);
+        let on_accent = if accent == Accent::Yellow { Color32::BLACK } else { Color32::WHITE };
+        if dark {
+            Self {
+                dark,
+                accent: a,
+                on_accent,
+                window: rgb(30, 30, 32),
+                sidebar: rgb(40, 40, 43),
+                toolbar: rgb(44, 44, 47),
+                canvas: rgb(22, 22, 24),
+                card: rgb(50, 50, 54),
+                control: rgb(64, 64, 68),
+                control_hover: rgb(78, 78, 83),
+                segment_selected: rgb(99, 99, 102),
+                separator: Color32::from_white_alpha(22),
+                text: rgb(245, 245, 247),
+                text_secondary: rgb(160, 160, 166),
+                text_tertiary: rgb(110, 110, 116),
+                selection: with_alpha(a, 70),
+                track: rgb(72, 72, 76),
+                knob: rgb(236, 236, 240),
+                shadow: Color32::from_black_alpha(110),
+                star: rgb(255, 204, 0),
+                success: rgb(48, 209, 88),
+                warning: rgb(255, 214, 10),
+                danger: rgb(255, 69, 58),
+            }
+        } else {
+            Self {
+                dark,
+                accent: a,
+                on_accent,
+                window: rgb(246, 246, 248),
+                sidebar: rgb(234, 234, 237),
+                toolbar: rgb(242, 242, 245),
+                canvas: rgb(210, 210, 215),
+                card: rgb(255, 255, 255),
+                control: rgb(226, 226, 230),
+                control_hover: rgb(214, 214, 219),
+                segment_selected: rgb(255, 255, 255),
+                separator: Color32::from_black_alpha(26),
+                text: rgb(29, 29, 31),
+                text_secondary: rgb(110, 110, 115),
+                text_tertiary: rgb(160, 160, 165),
+                selection: with_alpha(a, 50),
+                track: rgb(214, 214, 219),
+                knob: rgb(255, 255, 255),
+                shadow: Color32::from_black_alpha(40),
+                star: rgb(255, 170, 0),
+                success: rgb(40, 180, 70),
+                warning: rgb(230, 160, 0),
+                danger: rgb(255, 59, 48),
+            }
+        }
+    }
+}
 
-pub const ACCENT: Color32 = Color32::from_rgb(0, 210, 255);
-pub const ACCENT_HOVER: Color32 = Color32::from_rgb(51, 220, 255);
-pub const ACCENT_PRESSED: Color32 = Color32::from_rgb(0, 168, 204);
-pub const ACCENT_MUTED: Color32 = Color32::from_rgba_premultiplied(0, 30, 36, 36);
-pub const ACCENT_STAR: Color32 = Color32::from_rgb(255, 200, 50);
+fn rgb(r: u8, g: u8, b: u8) -> Color32 {
+    Color32::from_rgb(r, g, b)
+}
 
-pub const TEXT_PRIMARY: Color32 = Color32::from_rgb(232, 234, 240);
-pub const TEXT_SECONDARY: Color32 = Color32::from_rgb(154, 163, 178);
-pub const TEXT_MUTED: Color32 = Color32::from_rgb(120, 128, 142);
-pub const TEXT_DISABLED: Color32 = Color32::from_rgb(91, 100, 114);
+pub fn with_alpha(c: Color32, alpha: u8) -> Color32 {
+    Color32::from_rgba_unmultiplied(c.r(), c.g(), c.b(), alpha)
+}
 
-pub const COLOR_SUCCESS: Color32 = Color32::from_rgb(46, 204, 113);
-pub const STATUS_SUCCESS: Color32 = Color32::from_rgb(46, 204, 113);
-pub const STATUS_WARNING: Color32 = Color32::from_rgb(241, 196, 15);
-pub const STATUS_ERROR: Color32 = Color32::from_rgb(231, 76, 60);
+fn palette_id() -> egui::Id {
+    egui::Id::new("limestone_palette")
+}
+
+/// The palette for the current frame.
+pub fn pal(ui: &egui::Ui) -> Palette {
+    pal_ctx(ui.ctx())
+}
+
+pub fn pal_ctx(ctx: &egui::Context) -> Palette {
+    ctx.data(|d| d.get_temp::<Palette>(palette_id()))
+        .unwrap_or_else(|| Palette::new(true, Accent::Blue))
+}
 
 // ============================================================================
-// 3. METRICS & SPACING (4px Base Grid & Standard Heights)
+// Metrics
 // ============================================================================
 
 pub const SPACE_4: f32 = 4.0;
@@ -96,230 +212,133 @@ pub const SPACE_6: f32 = 6.0;
 pub const SPACE_8: f32 = 8.0;
 pub const SPACE_12: f32 = 12.0;
 pub const SPACE_16: f32 = 16.0;
-pub const SPACE_24: f32 = 24.0;
 
-pub const RADIUS_CONTROL: CornerRadius = CornerRadius::same(6);
+pub const RADIUS_SMALL: CornerRadius = CornerRadius::same(5);
+pub const RADIUS_CONTROL: CornerRadius = CornerRadius::same(7);
 pub const RADIUS_CARD: CornerRadius = CornerRadius::same(10);
 
-pub const HEIGHT_TOOLBAR: f32 = 48.0;
-pub const HEIGHT_STATUSBAR: f32 = 24.0;
-pub const WIDTH_SIDEBAR_LEFT: f32 = 260.0;
-pub const WIDTH_SIDEBAR_RIGHT: f32 = 330.0;
-
-// Standard button dimensions
-pub const BTN_HEIGHT_SM: f32 = 24.0;
-pub const BTN_HEIGHT_MD: f32 = 28.0;
+pub const HEIGHT_TOOLBAR: f32 = 52.0;
+pub const WIDTH_SIDEBAR: f32 = 300.0;
+pub const WIDTH_INSPECTOR: f32 = 320.0;
+pub const CONTROL_HEIGHT: f32 = 26.0;
 
 // ============================================================================
-// 4. THEME APPLICATION WITH DYNAMIC CUSTOMIZATION
+// Application
 // ============================================================================
 
-pub fn apply_theme_configured(
-    ctx: &egui::Context,
-    mode: ThemeMode,
-    accent: AccentTheme,
-    ui_scale: f32,
-) {
-    let mut visuals = match mode {
-        ThemeMode::DarkStudio => egui::Visuals::dark(),
-        ThemeMode::LightStudio => egui::Visuals::light(),
-    };
-
-    let accent_col = accent.color();
-    let accent_hover = accent.hover_color();
-    let accent_pressed = accent.pressed_color();
-    let accent_muted = Color32::from_rgba_premultiplied(
-        (accent_col.r() as f32 * 0.15) as u8,
-        (accent_col.g() as f32 * 0.15) as u8,
-        (accent_col.b() as f32 * 0.15) as u8,
-        38,
-    );
-
+/// Resolves the mode against the OS setting.
+pub fn is_dark(ctx: &egui::Context, mode: ThemeMode) -> bool {
     match mode {
-        ThemeMode::DarkStudio => {
-            visuals.override_text_color = Some(TEXT_PRIMARY);
-            visuals.panel_fill = SURFACE_PANEL;
-            visuals.window_fill = SURFACE_CARD;
-            visuals.extreme_bg_color = BG_CANVAS;
-            visuals.faint_bg_color = SURFACE_CARD;
-
-            visuals.widgets.inactive.bg_fill = SURFACE_CARD;
-            visuals.widgets.inactive.bg_stroke = Stroke::new(1.0_f32, BORDER_SUBTLE);
-            visuals.widgets.inactive.corner_radius = RADIUS_CONTROL;
-            visuals.widgets.inactive.fg_stroke = Stroke::new(1.0_f32, TEXT_PRIMARY);
-
-            visuals.widgets.hovered.bg_fill = SURFACE_RAISED;
-            visuals.widgets.hovered.bg_stroke = Stroke::new(1.0_f32, accent_col);
-            visuals.widgets.hovered.corner_radius = RADIUS_CONTROL;
-            visuals.widgets.hovered.fg_stroke = Stroke::new(1.0_f32, Color32::WHITE);
-
-            visuals.widgets.active.bg_fill = accent_pressed;
-            visuals.widgets.active.bg_stroke = Stroke::new(1.0_f32, accent_col);
-            visuals.widgets.active.corner_radius = RADIUS_CONTROL;
-            visuals.widgets.active.fg_stroke = Stroke::new(1.0_f32, Color32::WHITE);
-
-            visuals.widgets.open.bg_fill = SURFACE_RAISED;
-            visuals.widgets.open.bg_stroke = Stroke::new(1.0_f32, accent_col);
-            visuals.widgets.open.corner_radius = RADIUS_CONTROL;
-            visuals.widgets.open.fg_stroke = Stroke::new(1.0_f32, Color32::WHITE);
-
-            visuals.widgets.noninteractive.bg_fill = SURFACE_PANEL;
-            visuals.widgets.noninteractive.bg_stroke = Stroke::new(1.0_f32, BORDER_SUBTLE);
-            visuals.widgets.noninteractive.corner_radius = RADIUS_CONTROL;
-            visuals.widgets.noninteractive.fg_stroke = Stroke::new(1.0_f32, TEXT_SECONDARY);
-
-            visuals.selection.bg_fill = accent_muted;
-            visuals.selection.stroke = Stroke::new(1.0_f32, accent_col);
-
-            visuals.window_corner_radius = RADIUS_CARD;
-            visuals.menu_corner_radius = RADIUS_CONTROL;
-            visuals.window_stroke = Stroke::new(1.0_f32, BORDER_SUBTLE);
-        }
-        ThemeMode::LightStudio => {
-            let bg_light = Color32::from_rgb(222, 226, 234);     // Canvas neutral photo gray
-            let panel_light = Color32::from_rgb(244, 246, 250);  // Panels light surface
-            let card_light = Color32::from_rgb(255, 255, 255);   // Card elevated surface
-            let raised_light = Color32::from_rgb(235, 239, 245); // Hover / raised surface
-            let border_light = Color32::from_rgb(208, 214, 226); // Crisp subtle border
-            let text_dark = Color32::from_rgb(18, 22, 30);       // High-contrast primary text
-            let text_secondary_dark = Color32::from_rgb(76, 84, 100);
-
-            visuals.override_text_color = Some(text_dark);
-            visuals.panel_fill = panel_light;
-            visuals.window_fill = card_light;
-            visuals.extreme_bg_color = bg_light;
-            visuals.faint_bg_color = card_light;
-
-            visuals.widgets.inactive.bg_fill = card_light;
-            visuals.widgets.inactive.bg_stroke = Stroke::new(1.0_f32, border_light);
-            visuals.widgets.inactive.corner_radius = RADIUS_CONTROL;
-            visuals.widgets.inactive.fg_stroke = Stroke::new(1.0_f32, text_dark);
-
-            visuals.widgets.hovered.bg_fill = raised_light;
-            visuals.widgets.hovered.bg_stroke = Stroke::new(1.0_f32, accent_col);
-            visuals.widgets.hovered.corner_radius = RADIUS_CONTROL;
-            visuals.widgets.hovered.fg_stroke = Stroke::new(1.0_f32, text_dark);
-
-            visuals.widgets.active.bg_fill = accent_hover;
-            visuals.widgets.active.bg_stroke = Stroke::new(1.0_f32, accent_col);
-            visuals.widgets.active.corner_radius = RADIUS_CONTROL;
-            visuals.widgets.active.fg_stroke = Stroke::new(1.0_f32, Color32::WHITE);
-
-            visuals.widgets.open.bg_fill = raised_light;
-            visuals.widgets.open.bg_stroke = Stroke::new(1.0_f32, accent_col);
-            visuals.widgets.open.corner_radius = RADIUS_CONTROL;
-            visuals.widgets.open.fg_stroke = Stroke::new(1.0_f32, text_dark);
-
-            visuals.widgets.noninteractive.bg_fill = panel_light;
-            visuals.widgets.noninteractive.bg_stroke = Stroke::new(1.0_f32, border_light);
-            visuals.widgets.noninteractive.corner_radius = RADIUS_CONTROL;
-            visuals.widgets.noninteractive.fg_stroke = Stroke::new(1.0_f32, text_secondary_dark);
-
-            visuals.selection.bg_fill = accent_muted;
-            visuals.selection.stroke = Stroke::new(1.0_f32, accent_col);
-
-            visuals.window_corner_radius = RADIUS_CARD;
-            visuals.menu_corner_radius = RADIUS_CONTROL;
-            visuals.window_stroke = Stroke::new(1.0_f32, border_light);
-        }
+        ThemeMode::Dark => true,
+        ThemeMode::Light => false,
+        ThemeMode::System => ctx.system_theme().is_none_or(|t| t == egui::Theme::Dark),
     }
+}
 
-    ctx.set_visuals(visuals);
+pub fn apply_theme(ctx: &egui::Context, mode: ThemeMode, accent: Accent, ui_scale: f32) {
+    let dark = is_dark(ctx, mode);
+    let p = Palette::new(dark, accent);
+    ctx.data_mut(|d| d.insert_temp(palette_id(), p));
 
-    // Apply scaling and exact font hierarchy
+    let mut v = if dark { egui::Visuals::dark() } else { egui::Visuals::light() };
+    v.override_text_color = Some(p.text);
+    v.panel_fill = p.window;
+    v.window_fill = p.card;
+    v.extreme_bg_color = if dark { rgb(28, 28, 30) } else { rgb(255, 255, 255) };
+    v.faint_bg_color = p.card;
+    v.hyperlink_color = p.accent;
+    v.window_corner_radius = CornerRadius::same(12);
+    v.menu_corner_radius = RADIUS_CONTROL;
+    v.window_stroke = Stroke::new(1.0_f32, p.separator);
+    v.window_shadow = egui::epaint::Shadow {
+        offset: [0, 10],
+        blur: 30,
+        spread: 0,
+        color: p.shadow,
+    };
+    v.popup_shadow = egui::epaint::Shadow {
+        offset: [0, 6],
+        blur: 18,
+        spread: 0,
+        color: p.shadow,
+    };
+    v.selection.bg_fill = p.selection;
+    v.selection.stroke = Stroke::new(1.0_f32, p.accent);
+    v.text_cursor.stroke = Stroke::new(2.0_f32, p.accent);
+    v.slider_trailing_fill = true;
+
+    let w = &mut v.widgets;
+    for (state, fill, stroke) in [
+        (&mut w.noninteractive, p.window, p.separator),
+        (&mut w.inactive, p.control, Color32::TRANSPARENT),
+        (&mut w.hovered, p.control_hover, Color32::TRANSPARENT),
+        (&mut w.active, p.control_hover, Color32::TRANSPARENT),
+        (&mut w.open, p.control_hover, Color32::TRANSPARENT),
+    ] {
+        state.bg_fill = fill;
+        state.weak_bg_fill = fill;
+        state.bg_stroke = Stroke::new(1.0_f32, stroke);
+        state.corner_radius = RADIUS_CONTROL;
+        state.fg_stroke = Stroke::new(1.0_f32, p.text);
+        state.expansion = 0.0;
+    }
+    w.noninteractive.fg_stroke = Stroke::new(1.0_f32, p.text_secondary);
+    ctx.set_visuals(v);
+
     let mut style = (*ctx.style()).clone();
-    style.text_styles.insert(
-        TextStyle::Small,
-        FontId::new(11.0, FontFamily::Proportional),
-    );
-    style.text_styles.insert(
-        TextStyle::Body,
-        FontId::new(13.0, FontFamily::Proportional),
-    );
-    style.text_styles.insert(
-        TextStyle::Button,
-        FontId::new(13.0, FontFamily::Proportional),
-    );
-    style.text_styles.insert(
-        TextStyle::Heading,
-        FontId::new(15.0, FontFamily::Proportional),
-    );
-    style.text_styles.insert(
-        TextStyle::Name("Title".into()),
-        FontId::new(20.0, FontFamily::Proportional),
-    );
-    style.text_styles.insert(
-        TextStyle::Monospace,
-        FontId::new(12.0, FontFamily::Monospace),
-    );
-
-    // Consistent button and widget padding
+    let prop = |size| FontId::new(size, FontFamily::Proportional);
+    style.text_styles = [
+        (TextStyle::Small, prop(11.0)),
+        (TextStyle::Body, prop(13.0)),
+        (TextStyle::Button, prop(13.0)),
+        (TextStyle::Heading, prop(17.0)),
+        (TextStyle::Monospace, FontId::new(12.0, FontFamily::Monospace)),
+    ]
+    .into();
     style.spacing.item_spacing = egui::vec2(SPACE_8, SPACE_6);
-    style.spacing.button_padding = egui::vec2(10.0, 5.0);
-    style.spacing.window_margin = egui::Margin::same(12);
-
+    style.spacing.button_padding = egui::vec2(10.0, 4.0);
+    style.spacing.interact_size.y = CONTROL_HEIGHT;
+    style.spacing.window_margin = egui::Margin::same(16);
+    style.spacing.menu_margin = egui::Margin::same(6);
+    style.spacing.scroll = egui::style::ScrollStyle::floating();
+    style.interaction.selectable_labels = false;
     ctx.set_style(style);
     ctx.set_zoom_factor(ui_scale.clamp(0.75, 1.75));
 }
 
 // ============================================================================
-// 5. DYNAMIC THEME-AWARE COLOR RETRIEVAL HELPERS
+// Fonts
 // ============================================================================
 
-pub fn theme_text_primary(visuals: &egui::Visuals) -> Color32 {
-    if visuals.dark_mode {
-        TEXT_PRIMARY
-    } else {
-        Color32::from_rgb(18, 22, 30)
+/// Uses the platform UI font (SF Pro on macOS, Segoe UI on Windows) when available,
+/// with Tabler Icons as a glyph fallback.
+pub fn install_fonts(ctx: &egui::Context) {
+    let mut fonts = egui::FontDefinitions::default();
+
+    let candidates: &[&str] = &[
+        "/System/Library/Fonts/SFNS.ttf",
+        "/System/Library/Fonts/SFNSText.ttf",
+        "C:\\Windows\\Fonts\\segoeui.ttf",
+        "/usr/share/fonts/truetype/inter/Inter-Regular.ttf",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+    ];
+    if let Some(bytes) = candidates.iter().find_map(|p| std::fs::read(p).ok()) {
+        fonts
+            .font_data
+            .insert("system_ui".to_owned(), egui::FontData::from_owned(bytes).into());
+        if let Some(prop) = fonts.families.get_mut(&FontFamily::Proportional) {
+            prop.insert(0, "system_ui".to_owned());
+        }
     }
-}
 
-pub fn theme_text_secondary(visuals: &egui::Visuals) -> Color32 {
-    if visuals.dark_mode {
-        TEXT_SECONDARY
-    } else {
-        Color32::from_rgb(76, 84, 100)
+    fonts.font_data.insert(
+        "tabler_icons".to_owned(),
+        egui::FontData::from_static(include_bytes!("../assets/tabler-icons.ttf")).into(),
+    );
+    // Icons first: Tabler only defines Private Use Area codepoints, so it never
+    // shadows text glyphs, and system fonts can't shadow the icons.
+    if let Some(prop) = fonts.families.get_mut(&FontFamily::Proportional) {
+        prop.insert(0, "tabler_icons".to_owned());
     }
+    ctx.set_fonts(fonts);
 }
-
-pub fn theme_text_muted(visuals: &egui::Visuals) -> Color32 {
-    if visuals.dark_mode {
-        TEXT_MUTED
-    } else {
-        Color32::from_rgb(112, 122, 138)
-    }
-}
-
-pub fn theme_surface_panel(visuals: &egui::Visuals) -> Color32 {
-    if visuals.dark_mode {
-        SURFACE_PANEL
-    } else {
-        Color32::from_rgb(244, 246, 250)
-    }
-}
-
-pub fn theme_surface_card(visuals: &egui::Visuals) -> Color32 {
-    if visuals.dark_mode {
-        SURFACE_CARD
-    } else {
-        Color32::from_rgb(255, 255, 255)
-    }
-}
-
-
-pub fn theme_border(visuals: &egui::Visuals) -> Color32 {
-    if visuals.dark_mode {
-        BORDER_SUBTLE
-    } else {
-        Color32::from_rgb(208, 214, 226)
-    }
-}
-
-pub fn theme_canvas_bg(visuals: &egui::Visuals) -> Color32 {
-    if visuals.dark_mode {
-        BG_CANVAS
-    } else {
-        Color32::from_rgb(222, 226, 234)
-    }
-}
-

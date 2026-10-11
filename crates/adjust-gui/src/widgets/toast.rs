@@ -1,5 +1,7 @@
+//! Transient HUD notifications, centred near the bottom of the canvas.
+
 use crate::theme::*;
-use eframe::egui::{self};
+use eframe::egui;
 use std::time::{Duration, Instant};
 
 #[derive(Clone, Copy, PartialEq)]
@@ -43,58 +45,72 @@ impl ToastManager {
     }
 
     fn add(&mut self, msg: impl Into<String>, kind: ToastKind) {
+        let message = msg.into();
+        // Replace an identical visible toast instead of stacking duplicates.
+        self.toasts.retain(|t| t.message != message);
         self.toasts.push(Toast {
-            message: msg.into(),
+            message,
             kind,
             created: Instant::now(),
-            duration: Duration::from_millis(3200),
+            duration: Duration::from_millis(if kind == ToastKind::Error { 5000 } else { 2600 }),
         });
+        if self.toasts.len() > 3 {
+            self.toasts.remove(0);
+        }
     }
 
-    pub fn show(&mut self, ctx: &egui::Context) {
+    /// Draws toasts centred over `area` (normally the canvas), newest at the bottom.
+    pub fn show(&mut self, ctx: &egui::Context, area: egui::Rect) {
         let now = Instant::now();
         self.toasts.retain(|t| now.duration_since(t.created) < t.duration);
-
         if self.toasts.is_empty() {
             return;
         }
-
-        let screen_rect = ctx.screen_rect();
-        let mut offset_y = screen_rect.max.y - 38.0;
-
-        for toast in self.toasts.iter().rev() {
-            let (bg_color, fg_color) = match toast.kind {
-                ToastKind::Info => (SURFACE_RAISED, ACCENT),
-                ToastKind::Success => (SURFACE_RAISED, STATUS_SUCCESS),
-                ToastKind::Warning => (SURFACE_RAISED, STATUS_WARNING),
-                ToastKind::Error => (SURFACE_RAISED, STATUS_ERROR),
+        let p = pal_ctx(ctx);
+        let fill = if p.dark {
+            egui::Color32::from_rgba_unmultiplied(58, 58, 62, 242)
+        } else {
+            egui::Color32::from_rgba_unmultiplied(255, 255, 255, 246)
+        };
+        let mut y = area.max.y - 56.0;
+        for (i, toast) in self.toasts.iter().rev().enumerate() {
+            let age = now.duration_since(toast.created).as_secs_f32();
+            let remaining = (toast.duration.as_secs_f32() - age).max(0.0);
+            let alpha = (age / 0.15).min(1.0).min(remaining / 0.3);
+            let dot = match toast.kind {
+                ToastKind::Info => p.accent,
+                ToastKind::Success => p.success,
+                ToastKind::Warning => p.warning,
+                ToastKind::Error => p.danger,
             };
-
-            let toast_pos = egui::pos2(screen_rect.max.x - 22.0, offset_y);
-
-            egui::Area::new(egui::Id::new("toast_area").with(&toast.message))
-                .fixed_pos(toast_pos)
-                .pivot(egui::Align2::RIGHT_BOTTOM)
+            egui::Area::new(egui::Id::new("toast").with(i))
+                .fixed_pos(egui::pos2(area.center().x, y))
+                .pivot(egui::Align2::CENTER_BOTTOM)
                 .order(egui::Order::Tooltip)
+                .interactable(false)
                 .show(ctx, |ui| {
+                    ui.set_opacity(alpha);
                     egui::Frame::new()
-                        .fill(bg_color)
-                        .stroke(egui::Stroke::new(1.0_f32, BORDER_SUBTLE))
-                        .corner_radius(RADIUS_CONTROL)
-                        .inner_margin(egui::Margin::symmetric(14, 8))
+                        .fill(fill)
+                        .stroke(egui::Stroke::new(1.0_f32, p.separator))
+                        .corner_radius(egui::CornerRadius::same(18))
+                        .shadow(egui::epaint::Shadow {
+                            offset: [0, 4],
+                            blur: 16,
+                            spread: 0,
+                            color: p.shadow,
+                        })
+                        .inner_margin(egui::Margin::symmetric(16, 8))
                         .show(ui, |ui| {
                             ui.horizontal(|ui| {
-                                ui.label(egui::RichText::new("●").size(10.0).color(fg_color));
-                                ui.label(
-                                    egui::RichText::new(&toast.message)
-                                        .size(12.5)
-                                        .color(TEXT_PRIMARY),
-                                );
+                                ui.label(egui::RichText::new("●").size(9.0).color(dot));
+                                ui.label(egui::RichText::new(&toast.message).size(13.0).color(p.text));
                             });
                         });
                 });
-
-            offset_y -= 40.0;
+            y -= 44.0;
         }
+        // Keep animating fades and expire toasts even when nothing else repaints.
+        ctx.request_repaint_after(Duration::from_millis(50));
     }
 }

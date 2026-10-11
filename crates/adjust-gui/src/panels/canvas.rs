@@ -1,6 +1,10 @@
+//! Central image canvas: zoom/pan, before/after comparison modes, full-res tile overlay,
+//! drag-and-drop, and the empty-state welcome.
+
 use crate::icons::*;
 use crate::panels::toolbar::ViewMode;
 use crate::theme::*;
+use crate::widgets::controls::pill_button;
 use eframe::egui::{self, Color32, Ui};
 use std::path::PathBuf;
 
@@ -13,346 +17,211 @@ pub struct CanvasResponse {
     pub img_rect: Option<egui::Rect>,
 }
 
-#[allow(clippy::too_many_arguments)] // one argument per piece of widget state
-pub fn render_central_canvas(
-    ui: &mut Ui,
-    view_mode: ViewMode,
-    split_ratio: &mut f32,
-    zoom: &mut f32,
-    pan: &mut egui::Vec2,
-    image_px: egui::Vec2,
-    proc_texture: Option<&egui::TextureHandle>,
-    orig_texture: Option<&egui::TextureHandle>,
-    tile_texture: Option<(&egui::TextureHandle, egui::Rect)>,
-    has_image: bool,
-) -> CanvasResponse {
-    let available_size = ui.available_size();
+pub struct CanvasState<'a> {
+    pub view_mode: ViewMode,
+    pub split_ratio: &'a mut f32,
+    pub zoom: &'a mut f32,
+    pub pan: &'a mut egui::Vec2,
+    /// Full-resolution image size in pixels.
+    pub image_px: egui::Vec2,
+    pub proc_texture: Option<&'a egui::TextureHandle>,
+    pub orig_texture: Option<&'a egui::TextureHandle>,
+    pub tile: Option<(&'a egui::TextureHandle, egui::Rect)>,
+}
+
+const FULL_UV: egui::Rect = egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0));
+
+pub fn canvas(ui: &mut Ui, s: CanvasState) -> CanvasResponse {
+    let p = pal(ui);
+    let available = ui.available_size();
     let mut resp = CanvasResponse {
         dropped_path: None,
         open_clicked: false,
-        canvas_size: available_size,
+        canvas_size: available,
         canvas_rect: egui::Rect::NOTHING,
         img_rect: None,
     };
 
-    // Receive drag and dropped files
-    ui.input(|i| {
-        if !i.raw.dropped_files.is_empty() {
-            if let Some(file) = i.raw.dropped_files.first() {
-                if let Some(ref path) = file.path {
-                    resp.dropped_path = Some(path.clone());
-                }
-            }
-        }
+    let (dropped, hovering_file) = ui.input(|i| {
+        (
+            i.raw.dropped_files.first().and_then(|f| f.path.clone()),
+            !i.raw.hovered_files.is_empty(),
+        )
     });
+    resp.dropped_path = dropped;
 
-    let (response, painter) =
-        ui.allocate_painter(available_size, egui::Sense::click_and_drag());
-    resp.canvas_rect = response.rect;
+    let (response, painter) = ui.allocate_painter(available, egui::Sense::click_and_drag());
+    let area = response.rect;
+    resp.canvas_rect = area;
+    painter.rect_filled(area, 0.0, p.canvas);
 
-    let canvas_bg = theme_canvas_bg(ui.visuals());
-    let card_bg = theme_surface_card(ui.visuals());
-    let border_col = theme_border(ui.visuals());
-    let text_prim = theme_text_primary(ui.visuals());
-    let text_mut = theme_text_muted(ui.visuals());
-
-    // Canvas background
-    painter.rect_filled(response.rect, 0.0, canvas_bg);
-
-    // Empty state if no image loaded
-    if !has_image || proc_texture.is_none() {
-        let center = response.rect.center();
-        let box_size = egui::vec2(420.0, 240.0);
-        let box_rect = egui::Rect::from_center_size(center, box_size);
-
-        // Dashed drop border
-        painter.rect_filled(box_rect, RADIUS_CARD, card_bg);
-        painter.rect_stroke(
-            box_rect,
-            RADIUS_CARD,
-            egui::Stroke::new(1.5_f32, border_col),
-            egui::StrokeKind::Inside,
-        );
-
-        painter.text(
-            egui::pos2(center.x, center.y - 44.0),
-            egui::Align2::CENTER_CENTER,
-            ICON_PHOTO,
-            egui::FontId::proportional(36.0),
-            ACCENT,
-        );
-
-        painter.text(
-            egui::pos2(center.x, center.y - 2.0),
-            egui::Align2::CENTER_CENTER,
-            "Drag & Drop an image here or Paste (Ctrl+V)",
-            egui::FontId::proportional(15.0),
-            text_prim,
-        );
-
-        painter.text(
-            egui::pos2(center.x, center.y + 24.0),
-            egui::Align2::CENTER_CENTER,
-            "Supports PNG, JPEG, TIFF, WebP, BMP",
-            egui::FontId::proportional(12.0),
-            text_mut,
-        );
-
-        // Standardized Open Button inside empty state
-        let btn_rect = egui::Rect::from_center_size(
-            egui::pos2(center.x, center.y + 68.0),
-            egui::vec2(130.0, BTN_HEIGHT_MD),
-        );
-        let btn_resp = ui.interact(btn_rect, ui.id().with("empty_open_btn"), egui::Sense::click());
-        let btn_fill = if btn_resp.is_pointer_button_down_on() {
-            ACCENT_PRESSED
-        } else if btn_resp.hovered() {
-            ACCENT_HOVER
-        } else {
-            ACCENT
-        };
-        painter.rect_filled(btn_rect, RADIUS_CONTROL, btn_fill);
-        painter.text(
-            btn_rect.center(),
-            egui::Align2::CENTER_CENTER,
-            format!("{} Open Image", ICON_FOLDER_OPEN),
-            egui::FontId::proportional(12.5),
-            Color32::BLACK,
-        );
-
-        if btn_resp.clicked() {
-            resp.open_clicked = true;
-        }
-
+    let Some(proc_tex) = s.proc_texture else {
+        resp.open_clicked = empty_state(ui, area, hovering_file);
         return resp;
-    }
+    };
 
-    let proc_tex = proc_texture.unwrap();
-
-    // Pan & Drag Interactions
+    // ---- Interaction ---------------------------------------------------------
     if response.dragged_by(egui::PointerButton::Primary) {
-        if view_mode == ViewMode::Split {
-            let rel_x = (response.interact_pointer_pos().unwrap().x - response.rect.min.x)
-                / response.rect.width();
-            *split_ratio = rel_x.clamp(0.02, 0.98);
-        } else {
-            *pan += response.drag_delta();
-        }
-    } else if response.dragged_by(egui::PointerButton::Secondary)
-        || response.dragged_by(egui::PointerButton::Middle)
-    {
-        *pan += response.drag_delta();
-    }
-
-    // Mouse wheel zoom (multiplicative, so it feels the same at 5% and 500%)
-    let scroll_delta = if response.hovered() {
-        ui.input(|i| i.smooth_scroll_delta.y)
-    } else {
-        0.0
-    };
-    if scroll_delta != 0.0 {
-        *zoom = (*zoom * (scroll_delta * 0.0025).exp()).clamp(0.01, 10.0);
-    }
-
-    // `zoom` is physical screen pixels per full-resolution image pixel, so 1.0 is a true 100%.
-    // Fall back to the preview texture size if the full size isn't known.
-    let base_px = if image_px.x > 0.0 && image_px.y > 0.0 {
-        image_px
-    } else {
-        proc_tex.size_vec2()
-    };
-    let scaled_size = base_px * *zoom / ui.ctx().pixels_per_point();
-    let center = response.rect.center() + *pan;
-    let img_rect = egui::Rect::from_center_size(center, scaled_size);
-    resp.img_rect = Some(img_rect);
-
-    // Subtle drop shadow around photo
-    let shadow_rect = img_rect.expand(6.0);
-    painter.rect_filled(
-        shadow_rect,
-        RADIUS_CONTROL,
-        Color32::from_black_alpha(80),
-    );
-
-    // Space hold-to-compare detection
-    let holding_space = ui.input(|i| i.key_down(egui::Key::Space));
-
-    match view_mode {
-        ViewMode::Single => {
-            let active_tex = if holding_space {
-                orig_texture.unwrap_or(proc_tex)
-            } else {
-                proc_tex
-            };
-
-            // Base image render
-            painter.image(
-                active_tex.id(),
-                img_rect,
-                egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
-                Color32::WHITE,
-            );
-
-            // Full-resolution tile overlay when zoomed in past the preview's resolution
-            if !holding_space {
-                if let Some((tile_tex, tile_norm_rect)) = tile_texture {
-                    let tile_screen_min = egui::pos2(
-                        img_rect.min.x + tile_norm_rect.min.x * img_rect.width(),
-                        img_rect.min.y + tile_norm_rect.min.y * img_rect.height(),
-                    );
-                    let tile_screen_max = egui::pos2(
-                        img_rect.min.x + tile_norm_rect.max.x * img_rect.width(),
-                        img_rect.min.y + tile_norm_rect.max.y * img_rect.height(),
-                    );
-                    let tile_rect = egui::Rect::from_min_max(tile_screen_min, tile_screen_max);
-
-                    painter.image(
-                        tile_tex.id(),
-                        tile_rect,
-                        egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
-                        Color32::WHITE,
-                    );
+        if s.view_mode == ViewMode::Split {
+            if let Some(pos) = response.interact_pointer_pos() {
+                if let Some(img) = last_img_rect(ui) {
+                    *s.split_ratio = ((pos.x - img.min.x) / img.width()).clamp(0.0, 1.0);
                 }
             }
+        } else {
+            *s.pan += response.drag_delta();
+        }
+    } else if response.dragged_by(egui::PointerButton::Secondary) || response.dragged_by(egui::PointerButton::Middle) {
+        *s.pan += response.drag_delta();
+    }
 
+    // Wheel zoom around the cursor.
+    if response.hovered() {
+        let scroll = ui.input(|i| i.smooth_scroll_delta.y);
+        if scroll != 0.0 {
+            let old = *s.zoom;
+            let new = (old * (scroll * 0.0025).exp()).clamp(0.01, 16.0);
+            if let Some(cursor) = response.hover_pos() {
+                // Keep the image point under the cursor fixed.
+                let centre = area.center() + *s.pan;
+                let k = new / old;
+                *s.pan += (cursor - centre) * (1.0 - k);
+            }
+            *s.zoom = new;
+        }
+    }
+
+    // ---- Layout ----------------------------------------------------------------
+    let base_px = if s.image_px.x > 0.0 { s.image_px } else { proc_tex.size_vec2() };
+    let size = base_px * *s.zoom / ui.ctx().pixels_per_point();
+    let centre = area.center() + *s.pan;
+    let img_rect = egui::Rect::from_center_size(centre, size);
+    resp.img_rect = Some(img_rect);
+    remember_img_rect(ui, img_rect);
+
+    let holding_space = ui.input(|i| i.key_down(egui::Key::Space)) && !ui.ctx().wants_keyboard_input();
+    let painter = painter.with_clip_rect(area);
+
+    // Soft layered drop shadow; much lighter on the light canvas so it doesn't read as a frame.
+    let strength = if p.dark { 1.0 } else { 0.35 };
+    let shadow = |painter: &egui::Painter, r: egui::Rect| {
+        for (grow, alpha) in [(14.0, 18.0), (8.0, 28.0), (3.0, 40.0)] {
+            let a = (alpha * strength) as u8;
+            painter.rect_filled(r.expand(grow).translate(egui::vec2(0.0, 4.0)), 8.0, Color32::from_black_alpha(a));
+        }
+    };
+
+    match s.view_mode {
+        ViewMode::Single => {
+            shadow(&painter, img_rect);
+            let tex = if holding_space { s.orig_texture.unwrap_or(proc_tex) } else { proc_tex };
+            painter.image(tex.id(), img_rect, FULL_UV, Color32::WHITE);
+            if !holding_space {
+                if let Some((tile_tex, norm)) = s.tile {
+                    let r = egui::Rect::from_min_max(
+                        img_rect.lerp_inside(norm.min.to_vec2()),
+                        img_rect.lerp_inside(norm.max.to_vec2()),
+                    );
+                    painter.image(tile_tex.id(), r, FULL_UV, Color32::WHITE);
+                }
+            }
             if holding_space {
-                // Show badge "ORIGINAL (HOLDING SPACE)"
-                let badge_rect = egui::Rect::from_min_size(
-                    egui::pos2(img_rect.min.x + 12.0, img_rect.min.y + 12.0),
-                    egui::vec2(160.0, 24.0),
-                );
-                painter.rect_filled(badge_rect, RADIUS_CONTROL, Color32::from_black_alpha(190));
-                painter.text(
-                    badge_rect.center(),
-                    egui::Align2::CENTER_CENTER,
-                    "ORIGINAL (HOLDING SPACE)",
-                    egui::FontId::monospace(10.5),
-                    ACCENT,
-                );
+                badge(&painter, &p, img_rect.left_top().max(area.left_top()) + egui::vec2(12.0, 12.0), "Original", egui::Align2::LEFT_TOP);
             }
         }
         ViewMode::Split => {
-            if let Some(orig_tex) = orig_texture {
-                let split_x = img_rect.min.x + img_rect.width() * *split_ratio;
-
-                // Left partition: Original
-                let orig_uv = egui::Rect::from_min_max(
-                    egui::pos2(0.0, 0.0),
-                    egui::pos2(*split_ratio, 1.0),
-                );
-                let orig_view =
-                    egui::Rect::from_min_max(img_rect.min, egui::pos2(split_x, img_rect.max.y));
-                painter.image(orig_tex.id(), orig_view, orig_uv, Color32::WHITE);
-
-                // Right partition: Processed
-                let proc_uv = egui::Rect::from_min_max(
-                    egui::pos2(*split_ratio, 0.0),
-                    egui::pos2(1.0, 1.0),
-                );
-                let proc_view =
-                    egui::Rect::from_min_max(egui::pos2(split_x, img_rect.min.y), img_rect.max);
-                painter.image(proc_tex.id(), proc_view, proc_uv, Color32::WHITE);
-
-                // Split divider line
-                painter.line_segment(
-                    [
-                        egui::pos2(split_x, img_rect.min.y),
-                        egui::pos2(split_x, img_rect.max.y),
-                    ],
-                    egui::Stroke::new(1.5_f32, Color32::WHITE),
-                );
-
-                // Grip handle pill
-                let pill_center = egui::pos2(split_x, img_rect.center().y);
-                let pill_rect = egui::Rect::from_center_size(pill_center, egui::vec2(24.0, 40.0));
-                let panel_bg = theme_surface_panel(ui.visuals());
-                let text_prim = theme_text_primary(ui.visuals());
-                let text_sec = theme_text_secondary(ui.visuals());
-                painter.rect_filled(pill_rect, 12.0, panel_bg);
-                painter.rect_stroke(
-                    pill_rect,
-                    12.0,
-                    egui::Stroke::new(1.5_f32, ACCENT),
-                    egui::StrokeKind::Inside,
-                );
-                painter.text(
-                    pill_center,
-                    egui::Align2::CENTER_CENTER,
-                    ICON_GRIP,
-                    egui::FontId::proportional(16.0),
-                    text_prim,
-                );
-
-                // Tags "Original" and "Adjusted"
-                painter.text(
-                    egui::pos2(split_x - 12.0, img_rect.min.y + 16.0),
-                    egui::Align2::RIGHT_TOP,
-                    "ORIGINAL",
-                    egui::FontId::monospace(10.0),
-                    text_sec,
-                );
-                painter.text(
-                    egui::pos2(split_x + 12.0, img_rect.min.y + 16.0),
-                    egui::Align2::LEFT_TOP,
-                    "ADJUSTED",
-                    egui::FontId::monospace(10.0),
-                    ACCENT,
-                );
-            }
+            shadow(&painter, img_rect);
+            let orig = s.orig_texture.unwrap_or(proc_tex);
+            let t = *s.split_ratio;
+            let x = img_rect.min.x + img_rect.width() * t;
+            painter.image(
+                orig.id(),
+                egui::Rect::from_min_max(img_rect.min, egui::pos2(x, img_rect.max.y)),
+                egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(t, 1.0)),
+                Color32::WHITE,
+            );
+            painter.image(
+                proc_tex.id(),
+                egui::Rect::from_min_max(egui::pos2(x, img_rect.min.y), img_rect.max),
+                egui::Rect::from_min_max(egui::pos2(t, 0.0), egui::pos2(1.0, 1.0)),
+                Color32::WHITE,
+            );
+            let top = img_rect.top().max(area.top());
+            let bottom = img_rect.bottom().min(area.bottom());
+            painter.line_segment([egui::pos2(x, top), egui::pos2(x, bottom)], egui::Stroke::new(2.0_f32, Color32::WHITE));
+            let handle = egui::pos2(x, (top + bottom) / 2.0);
+            painter.circle_filled(handle + egui::vec2(0.0, 1.5), 15.0, Color32::from_black_alpha(70));
+            painter.circle_filled(handle, 14.0, Color32::WHITE);
+            painter.text(handle, egui::Align2::CENTER_CENTER, "‹ ›", egui::FontId::proportional(14.0), Color32::from_gray(60));
+            let label_y = top + 12.0;
+            badge(&painter, &p, egui::pos2(x - 10.0, label_y), "Before", egui::Align2::RIGHT_TOP);
+            badge(&painter, &p, egui::pos2(x + 10.0, label_y), "After", egui::Align2::LEFT_TOP);
         }
         ViewMode::SideBySide => {
-            if let Some(orig_tex) = orig_texture {
-                let half_w = scaled_size.x * 0.495;
-                let left_rect = egui::Rect::from_min_size(
-                    egui::pos2(center.x - scaled_size.x * 0.5, img_rect.min.y),
-                    egui::vec2(half_w, scaled_size.y),
-                );
-                let right_rect = egui::Rect::from_min_size(
-                    egui::pos2(center.x + scaled_size.x * 0.005, img_rect.min.y),
-                    egui::vec2(half_w, scaled_size.y),
-                );
-
-                painter.image(
-                    orig_tex.id(),
-                    left_rect,
-                    egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
-                    Color32::WHITE,
-                );
-                painter.image(
-                    proc_tex.id(),
-                    right_rect,
-                    egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
-                    Color32::WHITE,
-                );
-
-                // Labels
-                painter.text(
-                    egui::pos2(left_rect.min.x + 8.0, left_rect.min.y + 8.0),
-                    egui::Align2::LEFT_TOP,
-                    "ORIGINAL",
-                    egui::FontId::monospace(10.5),
-                    TEXT_SECONDARY,
-                );
-                painter.text(
-                    egui::pos2(right_rect.min.x + 8.0, right_rect.min.y + 8.0),
-                    egui::Align2::LEFT_TOP,
-                    "ADJUSTED",
-                    egui::FontId::monospace(10.5),
-                    ACCENT,
-                );
+            let gap = 12.0;
+            let half = egui::vec2((size.x - gap) / 2.0, size.y);
+            let left = egui::Rect::from_min_size(egui::pos2(centre.x - size.x / 2.0, img_rect.min.y), half);
+            let right = egui::Rect::from_min_size(egui::pos2(left.max.x + gap, img_rect.min.y), half);
+            for (r, tex, label) in [(left, s.orig_texture.unwrap_or(proc_tex), "Before"), (right, proc_tex, "After")] {
+                shadow(&painter, r);
+                painter.image(tex.id(), r, FULL_UV, Color32::WHITE);
+                badge(&painter, &p, r.left_top().max(area.left_top()) + egui::vec2(10.0, 10.0), label, egui::Align2::LEFT_TOP);
             }
         }
     }
 
-    // Canvas footer hint chip
-    let hint_text = "Space: Hold to compare  |  Scroll: Zoom  |  Drag: Pan canvas  |  Ctrl+V: Paste";
-    painter.text(
-        egui::pos2(response.rect.min.x + 14.0, response.rect.max.y - 14.0),
-        egui::Align2::LEFT_BOTTOM,
-        hint_text,
-        egui::FontId::proportional(11.0),
-        Color32::from_rgba_unmultiplied(154, 163, 178, 140),
-    );
-
     resp
+}
+
+/// The split-view drag needs last frame's image rect.
+fn remember_img_rect(ui: &Ui, r: egui::Rect) {
+    ui.ctx().data_mut(|d| d.insert_temp(egui::Id::new("canvas_img_rect"), r));
+}
+
+fn last_img_rect(ui: &Ui) -> Option<egui::Rect> {
+    ui.ctx().data(|d| d.get_temp(egui::Id::new("canvas_img_rect")))
+}
+
+/// Small translucent label pill over the image.
+fn badge(painter: &egui::Painter, p: &Palette, pos: egui::Pos2, text: &str, align: egui::Align2) {
+    let galley = painter.layout_no_wrap(text.to_owned(), egui::FontId::proportional(11.5), Color32::WHITE);
+    let size = galley.size() + egui::vec2(16.0, 8.0);
+    let rect = align.anchor_size(pos, size);
+    painter.rect_filled(rect, egui::CornerRadius::same(10), Color32::from_black_alpha(140));
+    painter.galley(rect.center() - galley.size() / 2.0, galley, Color32::WHITE);
+    let _ = p;
+}
+
+/// Welcome / drop target. Returns true if "Open Image…" was clicked.
+fn empty_state(ui: &mut Ui, area: egui::Rect, hovering_file: bool) -> bool {
+    let p = pal(ui);
+    let card = egui::Rect::from_center_size(area.center(), egui::vec2(420.0, 250.0));
+    let painter = ui.painter();
+    let stroke_col = if hovering_file { p.accent } else { p.separator };
+    painter.rect_filled(card, RADIUS_CARD, if hovering_file { p.selection } else { with_alpha(p.card, 120) });
+    // Dashed border
+    let pts = [card.left_top(), card.right_top(), card.right_bottom(), card.left_bottom(), card.left_top()];
+    for w in pts.windows(2) {
+        painter.add(egui::Shape::dashed_line(&[w[0], w[1]], egui::Stroke::new(1.5_f32, stroke_col), 8.0, 6.0));
+    }
+    painter.text(card.center() - egui::vec2(0.0, 62.0), egui::Align2::CENTER_CENTER, ICON_PHOTO, egui::FontId::proportional(44.0), p.accent);
+    painter.text(
+        card.center() - egui::vec2(0.0, 10.0),
+        egui::Align2::CENTER_CENTER,
+        if hovering_file { "Drop to open" } else { "Drop a photo here" },
+        egui::FontId::proportional(18.0),
+        p.text,
+    );
+    painter.text(
+        card.center() + egui::vec2(0.0, 16.0),
+        egui::Align2::CENTER_CENTER,
+        "or paste with Ctrl+V · PNG, JPEG, TIFF, WebP, BMP",
+        egui::FontId::proportional(12.0),
+        p.text_secondary,
+    );
+    let btn = egui::Rect::from_center_size(card.center() + egui::vec2(0.0, 62.0), egui::vec2(140.0, CONTROL_HEIGHT));
+    ui.scope_builder(egui::UiBuilder::new().max_rect(btn).layout(egui::Layout::top_down(egui::Align::Center)), |ui| {
+        pill_button(ui, "Open Image…", true, true).clicked()
+    })
+    .inner
 }

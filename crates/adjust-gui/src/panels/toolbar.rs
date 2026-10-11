@@ -1,240 +1,164 @@
+//! Unified window toolbar (macOS style): sidebar & file actions on the left, compare
+//! modes in the centre, history / zoom / export on the right.
+
 use crate::icons::*;
 use crate::theme::*;
+use crate::widgets::controls::{icon_button, pill_button, segmented};
 use eframe::egui::{self, Ui};
 
-#[derive(PartialEq, Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum ViewMode {
     Single,
     Split,
     SideBySide,
 }
 
-pub struct ToolbarResponse {
-    pub open_clicked: bool,
-    pub export_clicked: bool,
-    pub undo_clicked: bool,
-    pub redo_clicked: bool,
-    pub reset_all_clicked: bool,
-    pub fit_clicked: bool,
-    pub zoom_100_clicked: bool,
-    pub paste_clipboard_clicked: bool,
-    pub settings_clicked: bool,
-    pub shortcuts_clicked: bool,
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum ToolbarAction {
+    ToggleSidebar,
+    ToggleInspector,
+    Open,
+    Paste,
+    Undo,
+    Redo,
+    ZoomIn,
+    ZoomOut,
+    Fit,
+    ActualSize,
+    Export,
+    Settings,
+    Shortcuts,
 }
 
-#[allow(clippy::too_many_arguments)] // one argument per piece of widget state
-pub fn render_top_toolbar(
-    ui: &mut Ui,
-    view_mode: &mut ViewMode,
-    zoom: &mut f32,
-    opacity: &mut f32,
-    can_undo: bool,
-    can_redo: bool,
-    last_process_time: f32,
-    active_export_count: usize,
-) -> ToolbarResponse {
-    let mut resp = ToolbarResponse {
-        open_clicked: false,
-        export_clicked: false,
-        undo_clicked: false,
-        redo_clicked: false,
-        reset_all_clicked: false,
-        fit_clicked: false,
-        zoom_100_clicked: false,
-        paste_clipboard_clicked: false,
-        settings_clicked: false,
-        shortcuts_clicked: false,
-    };
+pub struct ToolbarState<'a> {
+    pub view_mode: &'a mut ViewMode,
+    pub title: &'a str,
+    pub subtitle: &'a str,
+    pub zoom: f32,
+    pub can_undo: bool,
+    pub can_redo: bool,
+    pub has_image: bool,
+    pub show_sidebar: bool,
+    pub show_inspector: bool,
+    pub busy: bool,
+}
 
-    let text_col = theme_text_primary(ui.visuals());
-    let sec_col = theme_text_secondary(ui.visuals());
+pub fn toolbar(ui: &mut Ui, s: ToolbarState) -> Vec<ToolbarAction> {
+    use ToolbarAction::*;
+    let p = pal(ui);
+    let mut actions = Vec::new();
+    let full = ui.max_rect();
 
+    // One row: left group, then a right-to-left group filling the rest. Nesting (rather
+    // than overlapping full-width scopes) keeps every button on top for hit-testing.
     ui.horizontal_centered(|ui| {
+        // ---- Left group ----------------------------------------------------
         ui.add_space(SPACE_8);
-
-        // App Brand / Logo
-        ui.label(
-            egui::RichText::new("LIMESTONE")
-                .strong()
-                .size(15.0)
-                .color(text_col),
-        );
-        ui.label(
-            egui::RichText::new("PRO")
-                .strong()
-                .size(11.0)
-                .color(ACCENT),
-        );
-
-        ui.add_space(SPACE_12);
-        ui.separator();
-        ui.add_space(SPACE_8);
-
-        // File I/O - Standardized 28px height buttons with tooltips
-        let btn_open = egui::Button::new(
-            egui::RichText::new(format!("{} Open", ICON_FOLDER_OPEN)).size(12.5),
-        )
-        .min_size(egui::vec2(74.0, BTN_HEIGHT_MD));
-
-        if ui.add(btn_open).on_hover_text("Open image from disk (Ctrl+O)").clicked() {
-            resp.open_clicked = true;
+        if icon_button(ui, ICON_SIDEBAR_LEFT, "Show/hide presets (Tab)", true, s.show_sidebar).clicked() {
+            actions.push(ToggleSidebar);
         }
-
-        let export_label = if active_export_count > 0 {
-            format!("{} Export ({})", ICON_DEVICE_FLOPPY, active_export_count)
-        } else {
-            format!("{} Export", ICON_DEVICE_FLOPPY)
-        };
-        let btn_export = egui::Button::new(
-            egui::RichText::new(export_label).size(12.5),
-        )
-        .min_size(egui::vec2(80.0, BTN_HEIGHT_MD));
-
-        if ui.add(btn_export).on_hover_text("Queue full-resolution background export (Ctrl+E)").clicked() {
-            resp.export_clicked = true;
+        ui.add_space(SPACE_4);
+        if icon_button(ui, ICON_FOLDER_OPEN, "Open image… (Ctrl+O)", true, false).clicked() {
+            actions.push(Open);
         }
-
-        let btn_paste = egui::Button::new(
-            egui::RichText::new(ICON_CLIPBOARD.to_string()).size(13.0),
-        )
-        .min_size(egui::vec2(32.0, BTN_HEIGHT_MD));
-
-        if ui.add(btn_paste).on_hover_text("Paste image from clipboard (Ctrl+V)").clicked() {
-            resp.paste_clipboard_clicked = true;
+        if icon_button(ui, ICON_CLIPBOARD, "Paste image (Ctrl+V)", true, false).clicked() {
+            actions.push(Paste);
         }
-
         ui.add_space(SPACE_8);
-        ui.separator();
-        ui.add_space(SPACE_8);
-
-        // Undo / Redo Buttons
-        ui.add_enabled_ui(can_undo, |ui| {
-            let btn_undo = egui::Button::new(
-                egui::RichText::new(ICON_ARROW_BACK_UP.to_string()).size(13.0),
-            )
-            .min_size(egui::vec2(32.0, BTN_HEIGHT_MD));
-            if ui.add(btn_undo).on_hover_text("Undo adjustment (Ctrl+Z)").clicked() {
-                resp.undo_clicked = true;
-            }
+        // Title block, truncated so it never pushes into the centre controls.
+        let title_w = (full.width() * 0.5 - 3.0 * 84.0 / 2.0 - 140.0).clamp(60.0, 360.0);
+        ui.allocate_ui(egui::vec2(title_w, HEIGHT_TOOLBAR - 8.0), |ui| {
+            ui.vertical(|ui| {
+                ui.spacing_mut().item_spacing.y = 0.0;
+                ui.add(egui::Label::new(egui::RichText::new(s.title).size(13.0).strong().color(p.text)).truncate());
+                ui.add(egui::Label::new(egui::RichText::new(s.subtitle).size(11.0).color(p.text_secondary)).truncate());
+            });
         });
 
-        ui.add_enabled_ui(can_redo, |ui| {
-            let btn_redo = egui::Button::new(
-                egui::RichText::new(ICON_ARROW_FORWARD_UP.to_string()).size(13.0),
-            )
-            .min_size(egui::vec2(32.0, BTN_HEIGHT_MD));
-            if ui.add(btn_redo).on_hover_text("Redo adjustment (Ctrl+Shift+Z)").clicked() {
-                resp.redo_clicked = true;
-            }
-        });
-
-        ui.add_space(SPACE_12);
-        ui.separator();
-        ui.add_space(SPACE_12);
-
-        // View Mode Segmented Selector (Single | Split | Side-by-side)
-        ui.label(egui::RichText::new("View:").size(12.0).color(sec_col));
-        let btn_v1 = egui::SelectableLabel::new(*view_mode == ViewMode::Single, format!("{} Single", ICON_PHOTO));
-        if ui.add_sized([78.0, BTN_HEIGHT_MD], btn_v1).on_hover_text("Single full view (1)").clicked() {
-            *view_mode = ViewMode::Single;
-        }
-
-        let btn_v2 = egui::SelectableLabel::new(*view_mode == ViewMode::Split, format!("{} Split", ICON_LAYOUT_COLUMNS));
-        if ui.add_sized([82.0, BTN_HEIGHT_MD], btn_v2).on_hover_text("Split comparison wipe (2)").clicked() {
-            *view_mode = ViewMode::Split;
-        }
-
-        let btn_v3 = egui::SelectableLabel::new(*view_mode == ViewMode::SideBySide, format!("{} Dual", ICON_LAYOUT_COLUMNS));
-        if ui.add_sized([72.0, BTN_HEIGHT_MD], btn_v3).on_hover_text("Side-by-side dual view (3)").clicked() {
-            *view_mode = ViewMode::SideBySide;
-        }
-
-        ui.add_space(SPACE_12);
-        ui.separator();
-        ui.add_space(SPACE_12);
-
-        // Master Opacity / Strength Slider at the top
-        ui.label(
-            egui::RichText::new(format!("{} Opacity:", ICON_SLIDERS))
-                .size(12.0)
-                .color(sec_col),
-        );
-        let op_slider = egui::Slider::new(opacity, 0.0..=100.0)
-            .show_value(false)
-            .step_by(1.0);
-        let op_resp = ui.add_sized([100.0, BTN_HEIGHT_MD], op_slider);
-        if op_resp.double_clicked() {
-            *opacity = 100.0;
-        }
-        op_resp.on_hover_text("Master Effect Opacity (0% - 100%). Double-click to reset to 100%.");
-
-        ui.label(
-            egui::RichText::new(format!("{:.0}%", *opacity))
-                .font(egui::FontId::monospace(11.5))
-                .color(ACCENT),
-        );
-
-        ui.add_space(SPACE_12);
-        ui.separator();
-        ui.add_space(SPACE_12);
-
-        // Zoom Controls
-        if ui.add_sized([38.0, BTN_HEIGHT_MD], egui::Button::new("Fit")).on_hover_text("Fit to canvas (F)").clicked() {
-            resp.fit_clicked = true;
-        }
-        if ui.add_sized([44.0, BTN_HEIGHT_MD], egui::Button::new("100%")).on_hover_text("Actual size 100% (0)").clicked() {
-            resp.zoom_100_clicked = true;
-        }
-
-        let zoom_pct = (*zoom * 100.0).round() as u32;
-        ui.label(
-            egui::RichText::new(format!("{}%", zoom_pct))
-                .font(egui::FontId::monospace(12.0))
-                .color(sec_col),
-        );
-
-        // Right side: Reset all, Settings, Latency, and Shortcuts modal
+        // ---- Right group (right-to-left) ------------------------------------
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            ui.add_space(SPACE_8);
+            if icon_button(ui, ICON_SIDEBAR_RIGHT, "Show/hide adjustments", true, s.show_inspector).clicked() {
+                actions.push(ToggleInspector);
+            }
+            if icon_button(ui, ICON_SETTINGS, "Settings (Ctrl+,)", true, false).clicked() {
+                actions.push(Settings);
+            }
+            if icon_button(ui, ICON_KEYBOARD, "Keyboard shortcuts (?)", true, false).clicked() {
+                actions.push(Shortcuts);
+            }
+            ui.add_space(SPACE_4);
+            if pill_button(ui, &format!("{ICON_EXPORT}  Export"), true, s.has_image)
+                .on_hover_text("Export the full-resolution image (Ctrl+E)")
+                .clicked()
+            {
+                actions.push(Export);
+            }
             ui.add_space(SPACE_12);
 
-            // Settings Preferences Dialog
-            let btn_cfg = egui::Button::new(
-                egui::RichText::new(format!("{} Settings", ICON_SETTINGS)).size(12.5),
-            )
-            .min_size(egui::vec2(86.0, BTN_HEIGHT_MD));
-            if ui.add(btn_cfg).on_hover_text("Themes, language, and acceleration").clicked() {
-                resp.settings_clicked = true;
+            // Zoom cluster
+            if icon_button(ui, ICON_ZOOM_IN, "Zoom in (+)", s.has_image, false).clicked() {
+                actions.push(ZoomIn);
+            }
+            let pct = ui
+                .add(
+                    egui::Label::new(
+                        egui::RichText::new(format!("{:>4.0}%", s.zoom * 100.0))
+                            .size(12.0)
+                            .monospace()
+                            .color(p.text_secondary),
+                    )
+                    .sense(egui::Sense::click()),
+                )
+                .on_hover_text("Click: actual size (0)
+Double-click: fit (F)");
+            if pct.double_clicked() {
+                actions.push(Fit);
+            } else if pct.clicked() {
+                actions.push(ActualSize);
+            }
+            if icon_button(ui, ICON_ZOOM_OUT, "Zoom out (−)", s.has_image, false).clicked() {
+                actions.push(ZoomOut);
+            }
+            if icon_button(ui, ICON_FIT, "Fit to window (F)", s.has_image, false).clicked() {
+                actions.push(Fit);
+            }
+            ui.add_space(SPACE_12);
+            if icon_button(ui, ICON_REDO, "Redo (Ctrl+Shift+Z)", s.can_redo, false).clicked() {
+                actions.push(Redo);
+            }
+            if icon_button(ui, ICON_UNDO, "Undo (Ctrl+Z)", s.can_undo, false).clicked() {
+                actions.push(Undo);
+            }
+            if s.busy {
+                ui.add_space(SPACE_8);
+                ui.add(egui::Spinner::new().size(14.0).color(p.text_secondary));
             }
 
-            // Shortcuts Help Button
-            let btn_help = egui::Button::new(
-                egui::RichText::new(ICON_HELP.to_string()).size(13.0),
-            )
-            .min_size(egui::vec2(32.0, BTN_HEIGHT_MD));
-            if ui.add(btn_help).on_hover_text("Keyboard shortcuts cheat sheet (?)").clicked() {
-                resp.shortcuts_clicked = true;
+            // ---- Centre: compare modes, centred on the window if it fits ----
+            let gap = ui.available_rect_before_wrap();
+            let seg_w = 84.0;
+            let size = egui::vec2(3.0 * seg_w + 4.0, CONTROL_HEIGHT + 2.0);
+            let mut centre = egui::Rect::from_center_size(egui::pos2(full.center().x, gap.center().y), size);
+            if centre.left() < gap.left() + 12.0 {
+                centre = centre.translate(egui::vec2(gap.left() + 12.0 - centre.left(), 0.0));
             }
-
-            let btn_reset = egui::Button::new(
-                egui::RichText::new(format!("{} Reset", ICON_REFRESH)).size(12.5),
-            )
-            .min_size(egui::vec2(72.0, BTN_HEIGHT_MD));
-            if ui.add(btn_reset).on_hover_text("Reset all parameters to default").clicked() {
-                resp.reset_all_clicked = true;
-            }
-
-            // Skip the badge when the window is too narrow (it's also in the status bar),
-            // otherwise it would draw over the zoom controls.
-            if last_process_time > 0.0 && ui.available_width() > 110.0 {
-                let badge = format!("⚡ {:.1} ms", last_process_time);
-                ui.label(
-                    egui::RichText::new(badge)
-                        .font(egui::FontId::monospace(11.5))
-                        .color(ACCENT),
-                );
+            if centre.right() <= gap.right() - 12.0 {
+                ui.scope_builder(egui::UiBuilder::new().max_rect(centre), |ui| {
+                    segmented(
+                        ui,
+                        s.view_mode,
+                        &[
+                            (ViewMode::Single, "Single", "Single view — hold Space to see the original (1)"),
+                            (ViewMode::Split, "Split", "Before/after wipe (2)"),
+                            (ViewMode::SideBySide, "Side by Side", "Before and after side by side (3)"),
+                        ],
+                        seg_w,
+                    );
+                });
             }
         });
     });
 
-    resp
+    actions
 }

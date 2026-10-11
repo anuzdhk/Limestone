@@ -1,4 +1,4 @@
-# LimeStone Pro (Beta Release)
+# LimeStone (Beta Release)
 
 [![Rust](https://img.shields.io/badge/rust-1.80%2B-orange.svg)](https://www.rust-lang.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
@@ -23,82 +23,70 @@ Installers are built by CI (`.github/workflows/release.yml`) when a `v*` tag is 
 
 ## ✨ Features Overview
 
-### 🎨 Pro UI
-- **Obsidian Dark Palette**: High-contrast, fatigue-free dark theme (`#101115` / `#16171c` / `#21232b`) with vibrant cyan accenting (`#00d2ff`).
-- **Tabler Icons Integration**: Crisp vector iconography throughout toolbar, adjustment tabs, and collections.
-- **View Modes**:
-  - **Single View**: Full canvas with hold-`Spacebar` for instant before/after toggle.
-  - **Split Wipe**: Interactive divider slider comparing original vs. processed in real-time.
-  - **Side-by-Side**: Dual synchronized preview comparison.
-- **Top-Right Inspector**:
-  - `NAVIGATE`: Miniature thumbnail overview with real-time viewport crop boundary box.
-  - `LOUPE`: 400% zoom loupe targeting critical micro-textures and skin details.
-  - `HISTOGRAM`: Live 256-bin RGB and perceptual luminance distribution graph.
-- **Effect Stacking (`Apply` Button Workflow)**:
-  - Supports stacking multiple effects in a single session (e.g. *Exposure Correction* $\rightarrow$ *Detail Light* $\rightarrow$ *Warm Tone*) with full layer undo capability (Undo Layer restores the image exactly as it was before the last Apply).
+### 🍎 Apple-Style Studio UI
+- **Light & Dark appearance** that follows your system automatically (or pin either), with the eight macOS accent colours and an interface-size setting.
+- **Native typography**: uses SF Pro on macOS and Segoe UI on Windows, with Tabler Icons for SF-Symbol-style glyphs.
+- **Unified toolbar**: open / paste, a centred *Single · Split · Side by Side* segmented control, undo/redo, zoom (true 100% and auto-fit) and a prominent **Export** button.
+- **Finder-style sidebar**: *All Presets*, *Favorites* and *My Collection*, plus every factory collection with counts.
+- **Live preset thumbnails**: every preset is rendered on *your* photo in a Photos-style grid (on a background thread, newest collection first).
+- **Photos-style Adjust pane**: an RGB histogram / navigator / loupe card, an **Effect Amount** slider, and collapsible sections with enable toggles and per-section Reset. Sliders fill from their default, double-click to reset, Shift-drag for fine control.
+- **Effect stacking**: **Apply** bakes the current look into the image so you can layer another on top; **Undo Layer** removes the last one and puts its settings back on the sliders.
+- **My Collection**: save the current adjustments as a preset (Ctrl+S), import/export preset files, right-click any preset to favourite or export it.
 
 ---
 
 ### ⚡ Algorithmic DSP Pipeline (`adjust-core`)
 
-The image processing engine operates entirely on parallel 32-bit floating-point channels (`RgbImageF32`) in gamma-encoded sRGB space (values `0.0..=1.0`). Spatial radii are defined relative to a 1000px reference so the 960px live preview, 100% zoom tiles, and full-resolution exports all match:
+The image processing engine operates on parallel 32-bit floating-point channels (`RgbImageF32`) in gamma-encoded sRGB space (values `0.0..=1.0`). Spatial radii are defined relative to a 1000px reference so the 960px live preview, 100% zoom tiles, and full-resolution exports all match:
 
 ```
-Input Image (RGB f32)
+Input Image (RGB f32, 8/16-bit, alpha preserved)
    │
    ├─► [Optional] Independent High-Frequency Detail Extraction (Guided Filter)
-   │
    ▼
-[1] Basic Exposure (Brightness, Contrast, Whites/Blacks Boost)
-   │
-   ▼
-[2] Adaptive Exposure (Retinex Local Gamma Tone Mapping, 1..30 Regions)
-   │
-   ▼
-[3] Details & Clarity (Threshold Smoothing, Detail Boost, Sharpening, Radius)
-   │
-   ▼
-[4] Color & Vibrance (Adaptive Saturation, Color Regions, Global Saturation, Hue)
-   │
-   ▼
-[5] Noise Suppression (Edge-Aware Guided Filter Luma Denoising)
-   │
-   ▼
-[6] Curve Tool (1024-LUT Natural Cubic Spline with Histogram Overlay)
-   │
-   ▼
-[7] Finishing Touches (Warmth, Vignette Falloff, Midtone Film Grain, Borders)
-   │
-   ▼
-[8] Master Transparency Blending (Dry/Wet mix against original)
-   │
+[1] Light            Brightness, Contrast, Blacks, Whites
+[2] Adaptive Exposure Retinex local gamma tone mapping, 1..30 regions
+[3] Detail           Threshold smoothing, small-detail boost, sharpening, radius
+[4] Color            Vibrance, saturation, hue shift
+[5] Noise Reduction  Edge-aware guided-filter luma denoising
+[6] Creative         Pencil / colour sketch, glow, posterize, solarize, invert
+[7] B&W and Toning   Channel-mixer black & white, split toning (shadow/highlight tints)
+[8] Curves           Master + per-channel R/G/B curves (1024-entry LUTs)
+[9] Finishing        Warmth, vignette, film grain, border, effect amount
    ▼
 Final Output Image
 ```
 
 #### Key Technical Highlights:
-1. **$O(1)$ Per-Pixel Guided Filtering**: Separable horizontal and vertical passes using parallel Rayon chunk iterators. Time complexity is independent of spatial filter radius.
+1. **$O(1)$ Per-Pixel Guided Filtering**: Separable running-sum box filters (the vertical pass runs on a transposed buffer) using Rayon. Time complexity is independent of filter radius.
 2. **Monotonic Local Gamma Tone Mapping**:
    $$\gamma = \exp(-(0.5 - \text{base}) \cdot \text{strength})$$
-   Ensures non-inverting luminance curves that eliminate shadow crushing and severe halos.
-3. **Interactive Spline Curves**: Piecewise cubic Hermite interpolation generating 1024-entry lookup tables (LUT) evaluated via vectorized parallel array lookups.
-4. **Background Live Preview Engine**: A 960px downsampled proxy is processed on a worker thread so the UI never blocks; exports and zoomed tiles render against the full original resolution with resolution-independent radii.
+   Ensures non-inverting luminance curves that avoid shadow crushing and severe halos.
+3. **Luminance-preserving toning**: sepia, selenium and split tones re-colour each pixel without brightening or darkening it.
+4. **Tile-exact rendering**: `process_region` renders any crop with the right filter margin, so zoomed tiles match a full render pixel-for-pixel (covered by tests).
+5. **Background rendering**: previews, full-res tiles, layer baking, exports and thumbnails all run off the UI thread.
 
 ---
 
 ## 🗂️ Factory Preset Collections
 
-Includes factory presets with slider and curve configurations:
+157 factory presets across the classic Adjust 4 collections (a preset can appear in more than one):
 
-| Collection | Included Presets |
+| Collection | Presets |
 | :--- | :--- |
-| **Classic Collection** | *Mild Contrast Pop*, *Detail - Light*, *Detail - Medium*, *Photo Pop*, *Exposure Correction*, *Equalize*, *Highlight Recovery*, *Shadow Recovery*, *High Key I*, *Low Key I*, *Neutral* |
-| **Vibrant Collection** | *Mild Color Pop*, *Simple Pop* |
-| **HDR Collection** | *Spicify* (Signature Topaz look), *Dramatic* |
-| **Stylized Collection** | *Painting* (Oil/Illustrative), *French Countryside*, *Soft Focus I* |
-| **Toned Collection** | *Warm Tone I*, *Cool Tone I* |
-| **Film Collection** | *Vintage 35mm* |
-| **Favorites** | Toggle preset stars (`★`) to filter customized sets instantly. |
+| **Adjust 4 Preset List** (35) | Clarity, Color Blast, Crisp, Dark - Ghostly, Dark - Night, Detail - Simple Pop, Detail - Strong, Detailed, Dramatic, Enhance Contrast, Equalize, Exposure Color Sketch, Exposure Correction, HDR - Pop, HDR - Sketch, Mild Color Pop, Mild Contrast Pop, Mild Details, Neutralizer by JorgeDiaz, Painting - Venice, Photo Pop, Portrait Drama, Portrait Smooth, Psychedelic, Recovery - Highlight, Recovery - Shadow, Simplify, Sketch - Color, Sketch - Dark Charcoal, Sketch - Med, Sketch - Pencil, Small Details, Smooth and Flat, Spicify, Vibrance |
+| **Classic** (24) | Brilliant Cold, Brilliant Warm, Cool Tone I–II, Delicate Details I–II, Detail - Light, Detail - Medium, Equalize, Exposure Correction, High Key I–II, Highlight Recovery, Low Key I–II, Mild Color Pop, Mild Contrast Pop, Photo Pop, Shadow Recovery, Simple Pop, Soft Focus I–II, Warm Tone I–II |
+| **Vibrant** (30) | Autumn, Bold, Boost, Clarity, Color Blast, Color Pop I–II, Crisp, Detail - Strong, Detail - Strong II, Detailed Color, Dramatic, Dramatic II, Exposure Color Stretch, French Countryside, Gritty I–II, High Contrast, Neutralizer by JorgeDiaz, Portrait Drama, Relative Contrast, Sapphire, Saturation Punch, Setting Sun, Setting Sun - Dynamic, Spicify, Spring, Summer, Vibrance, Winter |
+| **HDR** (9) | Dynamic Brightness, Dynamic Pop, Dynamic Pop II, Light / Medium / Heavy Pop Grunge, Light / Medium / Heavy Pop Smooth |
+| **Film** (27) | Bleach Bypass Cool / Warm, Color Negative, Cross Process I–V, Daylight Film in Tungsten I–II, Lomo I–III, Retro Style I–IV, Timeless I–IV, Tungsten Film in Daylight I–II, Vintage Grunge I–IV |
+| **Toned** (19) | Black Rose, Blue, Brown, Cerulean, Colored Selenium I–II, Colored Sepia, Colored Sepia II, Detailed Black and White, Mint, Mustard, Sharp Black and White, Soft Pink, Split Tone I–VI |
+| **Stylized** (39) | Blueprint, Brash, Cheerful Color, Colorized I–III, Comic Book, Comic Book Art, Dark - Ghostly, Dark - Night, Dayglow, Desaturated Detail, Dusk, Extreme Color, Extreme Color Blast, Faded Glory, Glow In The Dark, Grunge Me, Grunge Me BW, Grunge Me Desaturated, HDR - Sketch, HDR Sketch - Light, High Definition, Liquid Chrome, Mystified, Painting - Bold, Painting - Venice, Portrait Smooth, Psychedelic, Radical Realism, Simplify, Sketch - Color, Sketch - Dark Charcoal, Sketch - Med, Sketch - Pencil, Smooth and Flat, So Simple, Solarized Dreams I–II |
+
+Render every preset onto one of your photos as a contact sheet:
+
+```bash
+cargo run --release -p adjust-core --example contact_sheet -- photo.jpg sheet.png
+```
 
 ---
 
@@ -109,24 +97,26 @@ Includes factory presets with slider and curve configurations:
 ├── crates/
 │   ├── adjust-core/               # Pure Rust DSP image filtering engine
 │   │   ├── src/
-│   │   │   ├── filter.rs          # O(1) Box & Guided edge-preserving filters
-│   │   │   ├── image_buffer.rs    # RgbImageF32 SIMD/Rayon memory layouts
-│   │   │   ├── params.rs          # Complete Adjust 4 parameters struct & serde
-│   │   │   ├── pipeline.rs        # Full 8-stage image processing pipeline
-│   │   │   ├── preset.rs          # 21 Factory presets & custom preset JSON I/O
-│   │   │   └── stages/            # Individual processing stages (Exposure, Details, Curves...)
-│   │   └── tests/                 # Unit & integration rendering test suite
-│   ├── adjust-gui/                # Antigravity Dark Studio eframe/egui GUI
-│   │   ├── assets/                # Embedded Tabler Icons TTF font
+│   │   │   ├── filter.rs          # O(1) box & guided edge-preserving filters
+│   │   │   ├── image_buffer.rs    # RgbImageF32: 8/16-bit + alpha load/save, resampling
+│   │   │   ├── params.rs          # All adjustment parameters, serde defaults, sanitizing
+│   │   │   ├── pipeline.rs        # 10-stage pipeline, RenderContext, process_region
+│   │   │   ├── preset.rs          # 157 factory presets and the collections
+│   │   │   └── stages/            # Exposure, details, color, denoise, stylize, tone, curve, finishing
+│   │   ├── examples/              # contact_sheet: render every preset onto a photo
+│   │   └── tests/                 # Rendering, tiling, preview-vs-export and I/O tests
+│   ├── adjust-gui/                # Apple-style eframe/egui studio
 │   │   └── src/
-│   │       ├── curve_widget.rs    # Interactive Spline Curve widget with histogram
-│   │       ├── icons.rs           # Tabler Icons unicode bindings
-│   │       └── main.rs            # Inspector panels, view modes, and event loop
+│   │       ├── main.rs            # App state, rendering workflow, layer stack
+│   │       ├── theme.rs           # Palettes, accents, system fonts
+│   │       ├── panels/            # Toolbar, sidebar, canvas, inspector, dialogs
+│   │       ├── widgets/           # Sliders, segmented controls, sections, toasts
+│   │       ├── render_worker.rs   # Background preview / tile / bake rendering
+│   │       ├── thumbnails.rs      # Live preset thumbnails
+│   │       └── user_presets.rs    # My Collection storage
 │   └── adjust-cli/                # Headless command line processing & preset export
-├── docs/
-│   ├── topaz_adjust_4_reverse_engineering_spec.md  # Complete mathematical & UI spec
-│   └── rust_implementation_plan.md                 # Phased architecture roadmap
-├── presets/                       # Exported factory presets in JSON format
+├── docs/                          # Specs and implementation plan
+├── presets/                       # Example presets in JSON format
 ├── scripts/                       # Local MSI / DMG packaging scripts
 └── wix/                           # WiX installer definition
 ```
@@ -162,13 +152,14 @@ cargo run --release -p adjust-gui
 *Or run the release binary directly: `.\target\release\adjust-gui.exe`.*
 
 #### Keyboard & Mouse Shortcuts:
-- **`Spacebar` (Hold)**: Toggle instantaneous comparison with the original image.
-- **Left-Click + Drag**: Pan canvas (or drag the split wipe handle in Split View).
-- **Mouse Wheel**: Smooth zoom in / out ($10\% \dots 1000\%$).
-- **Left-Click on Curve**: Add a new control point (up to 8 points).
-- **Left-Click + Drag Point**: Move curve control point in real time.
-- **Right-Click on Point**: Delete an intermediate curve control point.
-- **Double-Click Slider**: Reset slider value to default.
+- **Space (hold)**: show the original. **1 / 2 / 3**: Single · Split · Side by Side.
+- **Ctrl+O / Ctrl+V / Ctrl+E**: open, paste (image or copied file), export. **Ctrl+S**: save as preset. **Ctrl+,**: settings.
+- **Ctrl+Z / Ctrl+Shift+Z**: undo / redo (one step per slider gesture).
+- **F / 0 / + / −**: fit, actual size, zoom in / out. Mouse wheel zooms around the cursor; drag to pan.
+- **Tab**: hide/show both sidebars. **?**: keyboard shortcut sheet.
+- **Sliders**: double-click to reset, Shift-drag for fine control.
+- **Curves**: click to add a point, drag to move, right-click to remove; R/G/B tabs edit per-channel curves.
+- **Presets**: right-click to favourite, export, or (in My Collection) delete.
 
 ---
 

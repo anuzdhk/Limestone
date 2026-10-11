@@ -1,50 +1,45 @@
-use eframe::egui;
+//! Tabler Icons (https://tabler.io/icons) codepoints, verified against
+//! `assets/tabler-icons.min.css`.
 
-// Tabler Icons (https://tabler.io/icons) Unicode Codepoints
-pub const ICON_SUN: &str = "\u{eb30}";               // Basic Exposure
-pub const ICON_EYE: &str = "\u{ea9a}";               // Adaptive Exposure
-pub const ICON_SPARKLES: &str = "\u{f6d7}";          // Details & Micro-contrast
-pub const ICON_PALETTE: &str = "\u{eb01}";           // Color Balance & Vibrance
-pub const ICON_VOLUME_OFF: &str = "\u{f1c3}";        // Noise Suppression
-pub const ICON_VECTOR_BEZIER: &str = "\u{ef1d}";     // Curve Tool (Spline)
-pub const ICON_WAND: &str = "\u{ebcb}";              // Finishing Touches & Creative
-pub const ICON_FOLDER_OPEN: &str = "\u{faf7}";       // File Open
-pub const ICON_DEVICE_FLOPPY: &str = "\u{eb62}";     // File Save
-pub const ICON_REFRESH: &str = "\u{eb13}";           // Reset
-pub const ICON_LAYOUT_COLUMNS: &str = "\u{ead4}";    // Split / Comparison
-pub const ICON_PHOTO: &str = "\u{eb0a}";             // Viewport
-pub const ICON_SEARCH: &str = "\u{eb1c}";            // Loupe / Search
-pub const ICON_STAR: &str = "\u{eb2c}";              // Favorite Preset
-pub const ICON_STAR_FILLED: &str = "\u{f6f8}";       // Favorite Preset Active
-pub const ICON_HISTORY: &str = "\u{eaee}";           // History / Snapshot
-pub const ICON_APPLY: &str = "\u{f15f}";             // Apply Button (Stacking effects)
-pub const ICON_GRIP: &str = "\u{eaeb}";              // Grip Vertical / Handle
-pub const ICON_ARROW_BACK_UP: &str = "\u{ea0c}";     // Undo
-pub const ICON_ARROW_FORWARD_UP: &str = "\u{ea0d}";  // Redo
-pub const ICON_CHEVRON_DOWN: &str = "\u{ea5f}";      // Accordion expanded
-pub const ICON_CHEVRON_RIGHT: &str = "\u{ea61}";     // Accordion collapsed
-pub const ICON_EYE_OFF: &str = "\u{ea99}";           // Bypass stage
-pub const ICON_HELP: &str = "\u{ea9f}";              // Shortcuts cheat sheet
-pub const ICON_UPLOAD: &str = "\u{eb47}";            // Drop zone upload
-pub const ICON_KEYBOARD: &str = "\u{eab5}";          // Keyboard shortcuts
-pub const ICON_SETTINGS: &str = "\u{eb20}";          // Settings / Preferences
-pub const ICON_CLIPBOARD: &str = "\u{ea70}";         // Paste / Clipboard
-pub const ICON_CPU: &str = "\u{ea85}";               // Compute / Hardware Acceleration
-pub const ICON_SLIDERS: &str = "\u{eb28}";           // Sliders / Opacity settings
-
-pub fn setup_tabler_fonts(ctx: &egui::Context) {
-    let mut fonts = egui::FontDefinitions::default();
-
-    // Embed the official Tabler Icons TTF font
-    fonts.font_data.insert(
-        "tabler_icons".to_owned(),
-        egui::FontData::from_static(include_bytes!("../assets/tabler-icons.ttf")).into(),
-    );
-
-    // Append Tabler Icons as fallback glyphs for Proportional font family
-    if let Some(prop) = fonts.families.get_mut(&egui::FontFamily::Proportional) {
-        prop.push("tabler_icons".to_owned());
-    }
-
-    ctx.set_fonts(fonts);
-}
+pub const ICON_SIDEBAR_LEFT: &str = "\u{eada}";
+pub const ICON_SIDEBAR_RIGHT: &str = "\u{ead9}";
+pub const ICON_PHOTO: &str = "\u{eb0a}";
+pub const ICON_STAR: &str = "\u{eb2e}";
+/// Filled star (from the text font; Tabler's webfont has no filled variant).
+pub const ICON_STAR_FILLED: &str = "\u{2605}";
+pub const ICON_FOLDER_OPEN: &str = "\u{faf7}";
+pub const ICON_EXPORT: &str = "\u{ede9}";
+pub const ICON_IMPORT: &str = "\u{edea}";
+pub const ICON_UNDO: &str = "\u{eb77}";
+pub const ICON_REDO: &str = "\u{eb78}";
+pub const ICON_ZOOM_IN: &str = "\u{eb56}";
+pub const ICON_ZOOM_OUT: &str = "\u{eb57}";
+pub const ICON_SETTINGS: &str = "\u{eb20}";
+pub const ICON_SEARCH: &str = "\u{eb1c}";
+pub const ICON_X: &str = "\u{eb55}";
+pub const ICON_SPARKLES: &str = "\u{f6d7}";
+pub const ICON_SUN: &str = "\u{eb30}";
+pub const ICON_CONTRAST: &str = "\u{efc7}";
+pub const ICON_PALETTE: &str = "\u{eb01}";
+pub const ICON_BRUSH: &str = "\u{ebb8}";
+pub const ICON_TRASH: &str = "\u{eb41}";
+pub const ICON_CLIPBOARD: &str = "\u{ea6f}";
+pub const ICON_SAVE: &str = "\u{eb62}";
+pub const ICON_LAYERS: &str = "\u{eef7}";
+pub const ICON_LAYER_POP: &str = "\u{f234}";
+pub const ICON_CHEVRON_DOWN: &str = "\u{ea5f}";
+pub const ICON_CHEVRON_RIGHT: &str = "\u{ea61}";
+pub const ICON_INFO: &str = "\u{eac5}";
+pub const ICON_KEYBOARD: &str = "\u{ebd6}";
+pub const ICON_FILTER: &str = "\u{f5a8}";
+pub const ICON_MOVIE: &str = "\u{eafa}";
+pub const ICON_CIRCLE_HALF: &str = "\u{eff3}";
+pub const ICON_APERTURE: &str = "\u{eb58}";
+pub const ICON_SWATCH: &str = "\u{eb61}";
+pub const ICON_GRID: &str = "\u{edba}";
+pub const ICON_CHECK: &str = "\u{ea5e}";
+pub const ICON_USER: &str = "\u{ef68}";
+pub const ICON_DROPLET: &str = "\u{ea97}";
+pub const ICON_HDR: &str = "\u{fa7b}";
+pub const ICON_LIBRARY: &str = "\u{fd4c}";
+pub const ICON_FIT: &str = "\u{ea28}";

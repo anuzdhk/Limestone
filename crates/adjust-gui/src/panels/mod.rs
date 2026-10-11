@@ -1,6 +1,6 @@
 pub mod adjustments;
 pub mod canvas;
+pub mod dialogs;
 pub mod inspector;
-pub mod presets;
-pub mod statusbar;
+pub mod sidebar;
 pub mod toolbar;

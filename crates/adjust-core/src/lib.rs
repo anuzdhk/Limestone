@@ -11,10 +11,10 @@ pub use image_buffer::{open_oriented, RgbImageF32};
 pub use params::{
     AdaptiveExposureParams, AdjustParams, BasicExposureParams, BorderParams, ColorParams,
     CurveParams, CurvePoint, DetailsParams, FinishingParams, GrainParams, NoiseParams,
-    VignetteParams,
+    StylizeParams, ToneParams, VignetteParams,
 };
 pub use pipeline::{process_image, process_region, process_with_context, RenderContext, REFERENCE_DIM};
-pub use preset::{get_factory_presets, Preset};
+pub use preset::{get_collections, get_factory_presets, Preset, PresetCollection};
 pub use stages::curve::{compute_histogram, generate_curve_lut, HistogramData};
 
 #[cfg(test)]
@@ -41,7 +41,7 @@ mod tests {
     #[test]
     fn test_preset_json_roundtrip() {
         let presets = get_factory_presets();
-        let spicify = &presets[0];
+        let spicify = presets.iter().find(|p| p.name == "Spicify").unwrap();
         let json = spicify.to_json().expect("Serialization failed");
         let restored = Preset::from_json(&json).expect("Deserialization failed");
         assert_eq!(restored.name, "Spicify");

@@ -126,7 +126,11 @@ pub struct CurvePoint {
 #[serde(default)]
 pub struct CurveParams {
     pub enabled: bool,
-    pub points: Vec<CurvePoint>, // Control points for natural cubic spline
+    pub points: Vec<CurvePoint>, // Master (RGB) control points
+    /// Per-channel curves applied after the master curve. Empty = identity.
+    pub red: Vec<CurvePoint>,
+    pub green: Vec<CurvePoint>,
+    pub blue: Vec<CurvePoint>,
 }
 
 impl Default for CurveParams {
@@ -137,56 +141,98 @@ impl Default for CurveParams {
 
 impl CurveParams {
     pub fn linear() -> Self {
+        Self::from_points(false, &[(0.0, 0.0), (1.0, 1.0)])
+    }
+
+    /// Builds an enabled-or-not master curve from `(x, y)` pairs.
+    pub fn from_points(enabled: bool, points: &[(f32, f32)]) -> Self {
         Self {
-            enabled: false,
-            points: vec![CurvePoint { x: 0.0, y: 0.0 }, CurvePoint { x: 1.0, y: 1.0 }],
+            enabled,
+            points: pts(points),
+            red: Vec::new(),
+            green: Vec::new(),
+            blue: Vec::new(),
         }
     }
 
     pub fn medium_contrast() -> Self {
-        Self {
-            enabled: true,
-            points: vec![
-                CurvePoint { x: 0.0, y: 0.0 },
-                CurvePoint { x: 0.25, y: 0.18 },
-                CurvePoint { x: 0.75, y: 0.82 },
-                CurvePoint { x: 1.0, y: 1.0 },
-            ],
-        }
+        Self::from_points(true, &[(0.0, 0.0), (0.25, 0.18), (0.75, 0.82), (1.0, 1.0)])
     }
 
     pub fn high_contrast() -> Self {
-        Self {
-            enabled: true,
-            points: vec![
-                CurvePoint { x: 0.0, y: 0.0 },
-                CurvePoint { x: 0.25, y: 0.12 },
-                CurvePoint { x: 0.75, y: 0.88 },
-                CurvePoint { x: 1.0, y: 1.0 },
-            ],
-        }
+        Self::from_points(true, &[(0.0, 0.0), (0.25, 0.12), (0.75, 0.88), (1.0, 1.0)])
     }
 
     pub fn lift_shadows() -> Self {
-        Self {
-            enabled: true,
-            points: vec![
-                CurvePoint { x: 0.0, y: 0.08 },
-                CurvePoint { x: 0.35, y: 0.42 },
-                CurvePoint { x: 1.0, y: 1.0 },
-            ],
-        }
+        Self::from_points(true, &[(0.0, 0.08), (0.35, 0.42), (1.0, 1.0)])
     }
 
     pub fn matte_film() -> Self {
+        Self::from_points(true, &[(0.0, 0.10), (0.30, 0.25), (0.70, 0.75), (1.0, 0.92)])
+    }
+}
+
+/// Converts `(x, y)` pairs into curve points.
+pub fn pts(points: &[(f32, f32)]) -> Vec<CurvePoint> {
+    points.iter().map(|&(x, y)| CurvePoint { x, y }).collect()
+}
+
+/// Black & white conversion and split toning.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ToneParams {
+    pub enabled: bool,
+    pub monochrome: f32,        // 0.0 .. 1.0, blend toward black & white
+    pub mono_mix: [f32; 3],     // R/G/B channel mixer weights for the B&W conversion
+    pub shadow_hue: f32,        // 0 .. 360 degrees
+    pub shadow_strength: f32,   // 0.0 .. 1.0
+    pub highlight_hue: f32,     // 0 .. 360 degrees
+    pub highlight_strength: f32,// 0.0 .. 1.0
+    pub balance: f32,           // -1.0 .. 1.0 (negative favours shadows tint)
+}
+
+impl Default for ToneParams {
+    fn default() -> Self {
         Self {
             enabled: true,
-            points: vec![
-                CurvePoint { x: 0.0, y: 0.10 },
-                CurvePoint { x: 0.30, y: 0.25 },
-                CurvePoint { x: 0.70, y: 0.75 },
-                CurvePoint { x: 1.0, y: 0.92 },
-            ],
+            monochrome: 0.0,
+            mono_mix: [0.30, 0.59, 0.11],
+            shadow_hue: 30.0,
+            shadow_strength: 0.0,
+            highlight_hue: 45.0,
+            highlight_strength: 0.0,
+            balance: 0.0,
+        }
+    }
+}
+
+/// Creative effects: sketch, glow, posterize, solarize, invert.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct StylizeParams {
+    pub enabled: bool,
+    pub sketch: f32,        // 0.0 .. 1.0 strength of the pencil/colour sketch
+    pub sketch_radius: f32, // 1.0 .. 20.0 reference pixels (line thickness)
+    pub sketch_color: f32,  // 0.0 (graphite) .. 1.0 (keep colours)
+    pub glow: f32,          // 0.0 .. 1.0 soft bloom
+    pub glow_radius: f32,   // 2.0 .. 60.0 reference pixels
+    pub posterize: f32,     // 0.0 .. 1.0 (0 = off, 1 = 3 tone levels)
+    pub solarize: f32,      // 0.0 .. 1.0
+    pub invert: f32,        // 0.0 .. 1.0
+}
+
+impl Default for StylizeParams {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            sketch: 0.0,
+            sketch_radius: 4.0,
+            sketch_color: 0.0,
+            glow: 0.0,
+            glow_radius: 12.0,
+            posterize: 0.0,
+            solarize: 0.0,
+            invert: 0.0,
         }
     }
 }
@@ -281,6 +327,8 @@ pub struct AdjustParams {
     pub details: DetailsParams,
     pub color: ColorParams,
     pub noise: NoiseParams,
+    pub stylize: StylizeParams,
+    pub tone: ToneParams,
     pub curve: CurveParams,
     pub finishing: FinishingParams,
 }
@@ -335,11 +383,39 @@ impl AdjustParams {
         n.suppression = fin(n.suppression, 0.0, 1.0, 0.0);
         n.amount = fin(n.amount, 0.0, 1.0, 0.5);
 
-        p.curve.points.retain(|pt| pt.x.is_finite() && pt.y.is_finite());
-        for pt in &mut p.curve.points {
-            pt.x = pt.x.clamp(0.0, 1.0);
-            pt.y = pt.y.clamp(0.0, 1.0);
+        for curve in [
+            &mut p.curve.points,
+            &mut p.curve.red,
+            &mut p.curve.green,
+            &mut p.curve.blue,
+        ] {
+            curve.retain(|pt| pt.x.is_finite() && pt.y.is_finite());
+            for pt in curve.iter_mut() {
+                pt.x = pt.x.clamp(0.0, 1.0);
+                pt.y = pt.y.clamp(0.0, 1.0);
+            }
         }
+
+        let st = &mut p.stylize;
+        st.sketch = fin(st.sketch, 0.0, 1.0, 0.0);
+        st.sketch_radius = fin(st.sketch_radius, 1.0, 20.0, 4.0);
+        st.sketch_color = fin(st.sketch_color, 0.0, 1.0, 0.0);
+        st.glow = fin(st.glow, 0.0, 1.0, 0.0);
+        st.glow_radius = fin(st.glow_radius, 2.0, 60.0, 12.0);
+        st.posterize = fin(st.posterize, 0.0, 1.0, 0.0);
+        st.solarize = fin(st.solarize, 0.0, 1.0, 0.0);
+        st.invert = fin(st.invert, 0.0, 1.0, 0.0);
+
+        let t = &mut p.tone;
+        t.monochrome = fin(t.monochrome, 0.0, 1.0, 0.0);
+        for w in &mut t.mono_mix {
+            *w = fin(*w, -1.0, 2.0, 0.33);
+        }
+        t.shadow_hue = fin(t.shadow_hue, 0.0, 360.0, 30.0);
+        t.shadow_strength = fin(t.shadow_strength, 0.0, 1.0, 0.0);
+        t.highlight_hue = fin(t.highlight_hue, 0.0, 360.0, 45.0);
+        t.highlight_strength = fin(t.highlight_strength, 0.0, 1.0, 0.0);
+        t.balance = fin(t.balance, -1.0, 1.0, 0.0);
 
         let f = &mut p.finishing;
         f.transparency = fin(f.transparency, 0.0, 1.0, 0.0);

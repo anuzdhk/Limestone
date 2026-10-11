@@ -1,44 +1,70 @@
 {
   "name": "Portrait Smooth",
-  "category": "Portrait & Beauty",
-  "description": "Gentle skin smoothing with noise suppression while retaining hair and eye clarity.",
+  "category": "Stylized Collection",
+  "description": "Smooth skin, preserved edges",
   "params": {
     "basic_exposure": {
       "enabled": true,
-      "brightness": 0.04,
-      "contrast": -0.05,
+      "brightness": 0.0,
+      "contrast": 0.0,
       "boost_blacks": 0.0,
-      "boost_whites": 0.02
+      "boost_whites": 0.0
     },
     "adaptive_exposure": {
       "enabled": true,
-      "adaptive_exposure": 0.3,
-      "regions": 8,
-      "contrast": -0.05,
-      "brightness": 0.03,
-      "protect_highlights": 0.3,
-      "protect_shadows": 0.2
+      "adaptive_exposure": 0.0,
+      "regions": 10,
+      "contrast": 0.0,
+      "brightness": 0.0,
+      "protect_highlights": 0.0,
+      "protect_shadows": 0.0
     },
     "details": {
       "enabled": true,
-      "strength": -0.35,
-      "boost": 0.8,
-      "threshold": 0.15,
-      "radius": 1.5,
+      "strength": -0.8,
+      "detail_boost": 1.0,
+      "threshold": 0.3,
+      "radius": 3.0,
+      "sharpen": 0.0,
       "process_independently": true
     },
     "color": {
       "enabled": true,
-      "adaptive_saturation": 0.2,
+      "adaptive_saturation": 0.0,
       "color_regions": 10,
-      "saturation": -0.05,
-      "saturation_boost": 0.95,
+      "saturation": 0.0,
+      "saturation_boost": 1.0,
       "hue": 0.0
     },
     "noise": {
       "enabled": true,
-      "suppression": 0.45,
+      "suppression": 0.4,
       "amount": 0.6
+    },
+    "stylize": {
+      "enabled": true,
+      "sketch": 0.0,
+      "sketch_radius": 4.0,
+      "sketch_color": 0.0,
+      "glow": 0.1,
+      "glow_radius": 12.0,
+      "posterize": 0.0,
+      "solarize": 0.0,
+      "invert": 0.0
+    },
+    "tone": {
+      "enabled": true,
+      "monochrome": 0.0,
+      "mono_mix": [
+        0.3,
+        0.59,
+        0.11
+      ],
+      "shadow_hue": 30.0,
+      "shadow_strength": 0.0,
+      "highlight_hue": 45.0,
+      "highlight_strength": 0.0,
+      "balance": 0.0
     },
     "curve": {
       "enabled": false,
@@ -51,12 +77,15 @@
           "x": 1.0,
           "y": 1.0
         }
-      ]
+      ],
+      "red": [],
+      "green": [],
+      "blue": []
     },
     "finishing": {
       "enabled": true,
       "transparency": 0.0,
-      "warmth": 0.08,
+      "warmth": 0.05,
       "vignette": {
         "amount": 0.0,
         "size": 0.5,
@@ -66,6 +95,15 @@
       "grain": {
         "amount": 0.0,
         "size": 1.0
+      },
+      "border": {
+        "enabled": false,
+        "thickness": 0.0,
+        "color": [
+          1.0,
+          1.0,
+          1.0
+        ]
       }
     }
   }

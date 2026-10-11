@@ -1,37 +1,38 @@
 {
   "name": "Photo Pop",
-  "category": "Exposure & Detail",
-  "description": "Clean, natural enhancement bringing clarity, brightness, and color vibrance without looking overcooked.",
+  "category": "Classic Collection",
+  "description": "All-round punch: contrast, detail and colour",
   "params": {
     "basic_exposure": {
       "enabled": true,
-      "brightness": 0.02,
-      "contrast": 0.08,
-      "boost_blacks": 0.05,
-      "boost_whites": 0.03
+      "brightness": 0.0,
+      "contrast": 0.0,
+      "boost_blacks": 0.0,
+      "boost_whites": 0.0
     },
     "adaptive_exposure": {
       "enabled": true,
-      "adaptive_exposure": 0.45,
-      "regions": 8,
-      "contrast": 0.08,
-      "brightness": 0.02,
-      "protect_highlights": 0.2,
-      "protect_shadows": 0.15
+      "adaptive_exposure": 0.7,
+      "regions": 12,
+      "contrast": 0.21000001,
+      "brightness": 0.0,
+      "protect_highlights": 0.3,
+      "protect_shadows": 0.2
     },
     "details": {
       "enabled": true,
-      "strength": 0.65,
-      "boost": 1.05,
-      "threshold": 0.12,
-      "radius": 1.0,
+      "strength": 1.26,
+      "detail_boost": 1.15,
+      "threshold": 0.08,
+      "radius": 1.2,
+      "sharpen": 0.21000001,
       "process_independently": true
     },
     "color": {
       "enabled": true,
-      "adaptive_saturation": 0.35,
+      "adaptive_saturation": 0.48999998,
       "color_regions": 10,
-      "saturation": 0.05,
+      "saturation": 0.084,
       "saturation_boost": 1.1,
       "hue": 0.0
     },
@@ -39,6 +40,31 @@
       "enabled": true,
       "suppression": 0.0,
       "amount": 0.5
+    },
+    "stylize": {
+      "enabled": true,
+      "sketch": 0.0,
+      "sketch_radius": 4.0,
+      "sketch_color": 0.0,
+      "glow": 0.0,
+      "glow_radius": 12.0,
+      "posterize": 0.0,
+      "solarize": 0.0,
+      "invert": 0.0
+    },
+    "tone": {
+      "enabled": true,
+      "monochrome": 0.0,
+      "mono_mix": [
+        0.3,
+        0.59,
+        0.11
+      ],
+      "shadow_hue": 30.0,
+      "shadow_strength": 0.0,
+      "highlight_hue": 45.0,
+      "highlight_strength": 0.0,
+      "balance": 0.0
     },
     "curve": {
       "enabled": false,
@@ -51,7 +77,10 @@
           "x": 1.0,
           "y": 1.0
         }
-      ]
+      ],
+      "red": [],
+      "green": [],
+      "blue": []
     },
     "finishing": {
       "enabled": true,
@@ -66,6 +95,15 @@
       "grain": {
         "amount": 0.0,
         "size": 1.0
+      },
+      "border": {
+        "enabled": false,
+        "thickness": 0.0,
+        "color": [
+          1.0,
+          1.0,
+          1.0
+        ]
       }
     }
   }

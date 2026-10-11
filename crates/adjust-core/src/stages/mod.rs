@@ -5,3 +5,5 @@ pub mod curve;
 pub mod denoise;
 pub mod details;
 pub mod finishing;
+pub mod stylize;
+pub mod tone;

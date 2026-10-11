@@ -1,134 +1,116 @@
+//! Collapsible adjustment section with an enable toggle and reset, in the style of
+//! the Photos "Adjust" pane.
+
 use crate::icons::*;
 use crate::theme::*;
-use eframe::egui::{self, Stroke, Ui};
+use eframe::egui::{self, Sense, Ui};
 
-pub struct AccordionHeaderResponse {
-    pub is_open: bool,
-    pub toggled_bypass: bool,
-    pub reset_clicked: bool,
+pub struct SectionResponse {
+    /// The enable toggle was clicked.
+    pub toggled: bool,
+    pub reset: bool,
 }
 
-/// Renders a section header and returns whether it's open, if bypass was toggled, and if reset was clicked.
-pub fn render_section_header(
+/// Renders a section header and, when expanded, its body.
+/// `enabled` drives the toggle; `modified` shows the Reset link.
+#[allow(clippy::too_many_arguments)] // header state + body closure
+pub fn section(
     ui: &mut Ui,
-    id_str: &str,
+    id: &str,
     icon: &str,
     title: &str,
-    is_modified: bool,
     enabled: bool,
+    modified: bool,
     default_open: bool,
-) -> (AccordionHeaderResponse, egui::collapsing_header::CollapsingState) {
-    ui.add_space(SPACE_4);
-
-    let id = ui.make_persistent_id(id_str);
-    let mut state = egui::collapsing_header::CollapsingState::load_with_default_open(ui.ctx(), id, default_open);
-    let is_open = state.is_open();
-
-    let mut resp = AccordionHeaderResponse {
-        is_open,
-        toggled_bypass: false,
-        reset_clicked: false,
+    body: impl FnOnce(&mut Ui),
+) -> SectionResponse {
+    let p = pal(ui);
+    let id = ui.make_persistent_id(id);
+    let mut state =
+        egui::collapsing_header::CollapsingState::load_with_default_open(ui.ctx(), id, default_open);
+    let mut out = SectionResponse {
+        toggled: false,
+        reset: false,
     };
 
-    let text_prim = theme_text_primary(ui.visuals());
-    let text_sec = theme_text_secondary(ui.visuals());
-    let text_mut = theme_text_muted(ui.visuals());
-
-    let header_response = ui.horizontal(|ui| {
-        // Expand/collapse chevron
-        let chevron = if is_open {
-            ICON_CHEVRON_DOWN
+    let row = ui.horizontal(|ui| {
+        ui.spacing_mut().item_spacing.x = 6.0;
+        // Enable toggle: filled accent circle with a check when on.
+        let (r, toggle) = ui.allocate_exact_size(egui::vec2(18.0, 18.0), Sense::click());
+        let c = r.center();
+        if enabled {
+            ui.painter().circle_filled(c, 8.0, p.accent);
+            ui.painter().text(
+                c,
+                egui::Align2::CENTER_CENTER,
+                ICON_CHECK,
+                egui::FontId::proportional(11.0),
+                p.on_accent,
+            );
         } else {
-            ICON_CHEVRON_RIGHT
-        };
-
-        if ui
-            .add(
-                egui::Button::new(
-                    egui::RichText::new(chevron)
-                        .size(11.0)
-                        .color(text_sec),
-                )
-                .frame(false),
-            )
+            ui.painter()
+                .circle_stroke(c, 7.5, egui::Stroke::new(1.2_f32, p.text_tertiary));
+        }
+        if toggle
+            .on_hover_text(if enabled { "Turn off this adjustment" } else { "Turn on this adjustment" })
             .clicked()
         {
-            state.toggle(ui);
-            resp.is_open = state.is_open();
+            out.toggled = true;
         }
 
-        // Stage Icon & Title
-        let title_color = if enabled {
-            text_prim
-        } else {
-            text_mut
-        };
-
-        let title_resp = ui.add(
+        let title_color = if enabled { p.text } else { p.text_tertiary };
+        let header = ui.add(
             egui::Label::new(
-                egui::RichText::new(format!("{} {}", icon, title))
-                    .strong()
+                egui::RichText::new(format!("{icon}  {title}"))
                     .size(13.5)
+                    .strong()
                     .color(title_color),
             )
-            .sense(egui::Sense::click()),
+            .sense(Sense::click()),
         );
 
-        if title_resp.clicked() {
-            state.toggle(ui);
-            resp.is_open = state.is_open();
-        }
-
-        // Small Modified Indicator Dot (if values differ from neutral)
-        if is_modified {
-            let (rect, _) = ui.allocate_exact_size(egui::vec2(6.0, 6.0), egui::Sense::hover());
-            ui.painter().circle_filled(rect.center(), 3.0, ACCENT);
-        }
-
-        // Right side: Reset & Bypass buttons
+        let mut chevron_clicked = false;
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            // Bypass / Eye toggle
-            let eye_icon = if enabled { ICON_EYE } else { ICON_EYE_OFF };
-            let eye_color = if enabled { ACCENT } else { text_mut };
-
-            if ui
+            let chevron = if state.is_open() { ICON_CHEVRON_DOWN } else { ICON_CHEVRON_RIGHT };
+            chevron_clicked = ui
                 .add(
-                    egui::Button::new(
-                        egui::RichText::new(eye_icon).size(13.0).color(eye_color),
-                    )
-                    .frame(false),
+                    egui::Label::new(egui::RichText::new(chevron).size(13.0).color(p.text_tertiary))
+                        .sense(Sense::click()),
                 )
-                .on_hover_text("Bypass / Enable this processing stage")
-                .clicked()
-            {
-                resp.toggled_bypass = true;
-            }
-
-            // Reset button (only active when modified)
-            if is_modified
+                .clicked();
+            if modified
                 && ui
                     .add(
-                        egui::Button::new(
-                            egui::RichText::new(ICON_REFRESH)
-                                .size(11.0)
-                                .color(text_sec),
-                        )
-                        .frame(false),
+                        egui::Label::new(egui::RichText::new("Reset").size(11.5).color(p.accent))
+                            .sense(Sense::click()),
                     )
-                    .on_hover_text("Reset this stage to defaults")
+                    .on_hover_text("Restore this section's defaults")
                     .clicked()
-                {
-                    resp.reset_clicked = true;
-                }
+            {
+                out.reset = true;
+            }
+        });
+        header.clicked() || chevron_clicked
+    });
+    if row.inner {
+        state.toggle(ui);
+    }
+
+    state.show_body_unindented(ui, |ui| {
+        ui.add_space(SPACE_4);
+        ui.add_enabled_ui(enabled, |ui| {
+            egui::Frame::new()
+                .inner_margin(egui::Margin {
+                    left: 24,
+                    right: 2,
+                    top: 0,
+                    bottom: 4,
+                })
+                .show(ui, body);
         });
     });
-
-    ui.add_space(2.0);
-    ui.painter().hline(
-        header_response.response.rect.x_range(),
-        header_response.response.rect.bottom() + 4.0,
-        Stroke::new(1.0_f32, BORDER_SUBTLE),
-    );
-
-    (resp, state)
+    ui.add_space(SPACE_4);
+    crate::widgets::controls::separator(ui);
+    ui.add_space(SPACE_4);
+    out
 }

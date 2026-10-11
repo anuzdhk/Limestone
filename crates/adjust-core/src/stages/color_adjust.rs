@@ -36,22 +36,17 @@ pub fn apply_color_adjust(img: &mut RgbImageF32, params: &ColorParams) {
                 }
             }
 
-            // 2. Adaptive saturation
+            // 2. Adaptive saturation (vibrance): boosts muted colours most, but scales
+            //    with existing chroma so neutral greys don't pick up random hue noise.
             if adapt_sat > 0.0 {
-                // Boost muted colors, protect already saturated ones
-                let headroom = (1.0 - s).clamp(0.0, 1.0);
-                s += headroom * adapt_sat * sat_boost;
+                s += adapt_sat * sat_boost * 2.0 * s * (1.0 - s);
             } else if adapt_sat < 0.0 {
-                // Desaturate vibrant colors
+                // Desaturate vibrant colours
                 s += s * adapt_sat * 0.5;
             }
 
-            // 3. Global saturation
-            if global_sat > 0.0 {
-                s = s + (1.0 - s) * global_sat;
-            } else if global_sat < 0.0 {
-                s *= 1.0 + global_sat;
-            }
+            // 3. Global saturation (multiplicative, so greys stay grey)
+            s *= 1.0 + global_sat;
 
             s = s.clamp(0.0, 1.0);
 

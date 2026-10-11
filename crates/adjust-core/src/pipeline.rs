@@ -8,6 +8,8 @@ use crate::stages::{
     denoise::{apply_denoise, denoise_radius_px},
     details::{apply_detail_layer, apply_details, detail_radius_px, extract_detail_layer},
     finishing::apply_finishing,
+    stylize::{apply_stylize, stylize_reach_px},
+    tone::apply_tone,
 };
 
 /// Longest image side, in pixels, at which spatial parameters (detail radius, denoise
@@ -96,6 +98,9 @@ fn filter_margin(params: &AdjustParams, ctx: &RenderContext) -> usize {
     if params.noise.enabled {
         reach += 2 * denoise_radius_px(&params.noise, ctx);
     }
+    if params.stylize.enabled {
+        reach += stylize_reach_px(&params.stylize, ctx);
+    }
     reach + 2
 }
 
@@ -146,10 +151,16 @@ pub fn process_with_context(
     // 6. Noise Suppression Stage
     apply_denoise(&mut working, &params.noise, ctx);
 
-    // 7. Curve Tool Stage
+    // 7. Creative Stylize Stage (sketch, glow, posterize, solarize, invert)
+    apply_stylize(&mut working, &params.stylize, ctx);
+
+    // 8. Black & White and Split Toning
+    apply_tone(&mut working, &params.tone);
+
+    // 9. Curve Tool Stage (master + per-channel)
     apply_curve(&mut working, &params.curve);
 
-    // 8. Finishing Touches (Vignette, Grain, Warmth, and Master Transparency)
+    // 10. Finishing Touches (Vignette, Grain, Warmth, and Master Transparency)
     apply_finishing(&mut working, input, &params.finishing, ctx);
 
     working

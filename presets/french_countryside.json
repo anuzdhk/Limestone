@@ -1,44 +1,70 @@
 {
   "name": "French Countryside",
-  "category": "Stylized & Creative",
-  "description": "Warm golden atmospheric tone with deep shadows and soft highlights.",
+  "category": "Vibrant Collection",
+  "description": "Warm, soft, sunlit pastoral look",
   "params": {
     "basic_exposure": {
       "enabled": true,
       "brightness": 0.0,
-      "contrast": 0.1,
-      "boost_blacks": 0.1,
-      "boost_whites": 0.05
+      "contrast": 0.0,
+      "boost_blacks": 0.0,
+      "boost_whites": 0.0
     },
     "adaptive_exposure": {
       "enabled": true,
-      "adaptive_exposure": 0.9,
+      "adaptive_exposure": 0.5,
       "regions": 10,
-      "contrast": 0.15,
-      "brightness": 0.0,
+      "contrast": 0.05,
+      "brightness": 0.05,
       "protect_highlights": 0.4,
-      "protect_shadows": 0.2
+      "protect_shadows": 0.3
     },
     "details": {
       "enabled": true,
-      "strength": 1.1,
-      "boost": 1.1,
-      "threshold": 0.09,
-      "radius": 1.2,
+      "strength": -0.2,
+      "detail_boost": 1.0,
+      "threshold": 0.15,
+      "radius": 3.0,
+      "sharpen": 0.0,
       "process_independently": true
     },
     "color": {
       "enabled": true,
       "adaptive_saturation": 0.4,
       "color_regions": 10,
-      "saturation": 0.05,
+      "saturation": 0.1,
       "saturation_boost": 1.1,
-      "hue": 5.0
+      "hue": 0.0
     },
     "noise": {
       "enabled": true,
       "suppression": 0.0,
       "amount": 0.5
+    },
+    "stylize": {
+      "enabled": true,
+      "sketch": 0.0,
+      "sketch_radius": 4.0,
+      "sketch_color": 0.0,
+      "glow": 0.2,
+      "glow_radius": 18.0,
+      "posterize": 0.0,
+      "solarize": 0.0,
+      "invert": 0.0
+    },
+    "tone": {
+      "enabled": true,
+      "monochrome": 0.0,
+      "mono_mix": [
+        0.3,
+        0.59,
+        0.11
+      ],
+      "shadow_hue": 30.0,
+      "shadow_strength": 0.0,
+      "highlight_hue": 45.0,
+      "highlight_strength": 0.0,
+      "balance": 0.0
     },
     "curve": {
       "enabled": false,
@@ -51,21 +77,33 @@
           "x": 1.0,
           "y": 1.0
         }
-      ]
+      ],
+      "red": [],
+      "green": [],
+      "blue": []
     },
     "finishing": {
       "enabled": true,
       "transparency": 0.0,
-      "warmth": 0.35,
+      "warmth": 0.2,
       "vignette": {
-        "amount": -0.18,
+        "amount": -0.2,
         "size": 0.6,
-        "transition": 0.5,
-        "roundness": 0.1
+        "transition": 0.6,
+        "roundness": 0.6
       },
       "grain": {
-        "amount": 0.1,
-        "size": 1.2
+        "amount": 0.0,
+        "size": 1.0
+      },
+      "border": {
+        "enabled": false,
+        "thickness": 0.0,
+        "color": [
+          1.0,
+          1.0,
+          1.0
+        ]
       }
     }
   }

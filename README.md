@@ -22,7 +22,7 @@ A clean-room, zero-overhead Rust desktop application and reverse-engineered clon
 
 ## ✨ Features Overview
 
-### 🎨 Pro Antigravity Dark Studio UI
+### 🎨 Pro UI
 - **Obsidian Dark Palette**: High-contrast, fatigue-free dark theme (`#101115` / `#16171c` / `#21232b`) with vibrant cyan accenting (`#00d2ff`).
 - **Tabler Icons Integration**: Crisp vector iconography throughout toolbar, adjustment tabs, and collections.
 - **Topaz 4 View Modes**:

@@ -23,7 +23,7 @@ jobs:
         run: echo "VERSION_STRIPPED=${VERSION#v}" >> "$GITHUB_ENV"
 
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -40,12 +40,14 @@ jobs:
       - name: Build MSI with WiX Toolset
         shell: pwsh
         run: |
-          dotnet tool install --global wix
+          # Pin WiX: v7 requires accepting its OSMF EULA before it will build.
+          dotnet tool install --global wix --version 7.0.0
+          wix eula accept wix7
           New-Item -ItemType Directory -Path "dist" -Force | Out-Null
           wix build wix/main.wxs -arch x64 -o "dist/LimeStone-${{ env.VERSION_STRIPPED }}-x64.msi"
 
       - name: Upload Windows MSI artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: LimeStone-Windows-MSI
           path: dist/LimeStone-${{ env.VERSION_STRIPPED }}-x64.msi
@@ -59,7 +61,7 @@ jobs:
         run: echo "VERSION_STRIPPED=${VERSION#v}" >> "$GITHUB_ENV"
 
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -128,7 +130,7 @@ jobs:
           hdiutil create -volname "LimeStone Pro" -srcfolder dmg_root -ov -format UDZO dist/LimeStone-${{ env.VERSION_STRIPPED }}-Universal.dmg
 
       - name: Upload macOS DMG artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: LimeStone-macOS-DMG
           path: dist/LimeStone-${{ env.VERSION_STRIPPED }}-Universal.dmg
@@ -144,7 +146,7 @@ jobs:
         run: echo "VERSION_STRIPPED=${VERSION#v}" >> "$GITHUB_ENV"
 
       - name: Download all artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           path: artifacts/
 

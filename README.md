@@ -1,11 +1,13 @@
-# LimeStone (Beta Release)
+# Limestone - Image Enhancement Tool
 
 [![Rust](https://img.shields.io/badge/rust-1.80%2B-orange.svg)](https://www.rust-lang.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS-lightgrey.svg)]()
 [![Release](https://img.shields.io/badge/release-v0.1.0--beta-brightgreen.svg)](https://github.com/anuzdhk/Limestone/releases)
 
-A clean-room Rust desktop photo-adjustment studio inspired by the classic *Topaz Adjust 4* workflow. Features multithreaded $O(1)$ separable guided filtering, Retinex local tone mapping, micro-contrast enhancement, natural cubic spline curve manipulation, and a pro studio UI powered by [egui](https://github.com/emilk/egui) and [Tabler Icons](https://tabler.io/icons).
+A fast desktop image enhancement tool written in Rust, inspired by *Topaz Adjust 5.0*. Limestone brings adaptive exposure, detail and clarity enhancement, vibrant colour, HDR-style tone mapping, film looks, toning and creative effects together with 157 one-click presets, all rendered live on your photo.
+
+Built with [egui](https://github.com/emilk/egui) and [Tabler Icons](https://tabler.io/icons). Currently in **beta**.
 
 ---
 
@@ -23,15 +25,15 @@ Installers are built by CI (`.github/workflows/release.yml`) when a `v*` tag is 
 
 ## ✨ Features Overview
 
-### 🍎 Apple-Style Studio UI
-- **Light & Dark appearance** that follows your system automatically (or pin either), with the eight macOS accent colours and an interface-size setting.
-- **Native typography**: uses SF Pro on macOS and Segoe UI on Windows, with Tabler Icons for SF-Symbol-style glyphs.
-- **Unified toolbar**: open / paste, a centred *Single · Split · Side by Side* segmented control, undo/redo, zoom (true 100% and auto-fit) and a prominent **Export** button.
-- **Finder-style sidebar**: *All Presets*, *Favorites* and *My Collection*, plus every factory collection with counts.
-- **Live preset thumbnails**: every preset is rendered on *your* photo in a Photos-style grid (on a background thread, newest collection first).
-- **Photos-style Adjust pane**: an RGB histogram / navigator / loupe card, an **Effect Amount** slider, and collapsible sections with enable toggles and per-section Reset. Sliders fill from their default, double-click to reset, Shift-drag for fine control.
-- **Effect stacking**: **Apply** bakes the current look into the image so you can layer another on top; **Undo Layer** removes the last one and puts its settings back on the sliders.
+### 🖼️ Editing Workspace
+- **Light & dark themes**: follows your system setting automatically (or choose one), with selectable accent colours and an interface-size setting.
+- **Toolbar**: open / paste, *Single · Split · Side by Side* comparison, undo/redo, zoom (true 100% and auto-fit) and **Export**.
+- **Preset browser**: *All Presets*, *Favorites* and *My Collection*, plus every factory collection with preset counts.
+- **Live preset thumbnails**: every preset is previewed on *your* photo, rendered in the background.
+- **Adjustment panel**: RGB histogram, navigator and loupe; an **Effect Amount** slider; collapsible sections with on/off toggles and per-section Reset. Double-click a slider to reset it, Shift-drag for fine control.
+- **Effect stacking**: **Apply** bakes the current look into the image so you can layer another on top; **Undo Layer** removes the last one and restores its settings.
 - **My Collection**: save the current adjustments as a preset (Ctrl+S), import/export preset files, right-click any preset to favourite or export it.
+- **Quality output**: 16-bit PNG/TIFF and transparency are preserved on export; EXIF orientation is honoured on import.
 
 ---
 
@@ -70,7 +72,7 @@ Final Output Image
 
 ## 🗂️ Factory Preset Collections
 
-157 factory presets across the classic Adjust 4 collections (a preset can appear in more than one):
+157 factory presets organised into seven collections (a preset can appear in more than one):
 
 | Collection | Presets |
 | :--- | :--- |
@@ -105,7 +107,7 @@ cargo run --release -p adjust-core --example contact_sheet -- photo.jpg sheet.pn
 │   │   │   └── stages/            # Exposure, details, color, denoise, stylize, tone, curve, finishing
 │   │   ├── examples/              # contact_sheet: render every preset onto a photo
 │   │   └── tests/                 # Rendering, tiling, preview-vs-export and I/O tests
-│   ├── adjust-gui/                # Apple-style eframe/egui studio
+│   ├── adjust-gui/                # Desktop editor (eframe/egui)
 │   │   └── src/
 │   │       ├── main.rs            # App state, rendering workflow, layer stack
 │   │       ├── theme.rs           # Palettes, accents, system fonts
@@ -144,7 +146,7 @@ cargo build --release
 
 ### Running the GUI
 
-Launch the standalone studio:
+Launch the editor:
 
 ```bash
 cargo run --release -p adjust-gui
@@ -193,4 +195,4 @@ cargo test --workspace
 
 ## 📄 License
 
-This project is licensed under the MIT License. See [LICENSE](LICENSE) for details. Topaz Adjust is a trademark of Topaz Labs LLC. LimeStone is an independent project and is not affiliated with, endorsed by, or sponsored by Topaz Labs.
+This project is licensed under the MIT License. See [LICENSE](LICENSE) for details. Inspired by Topaz Adjust 5.0. Topaz Adjust is a trademark of Topaz Labs LLC; Limestone is an independent project and is not affiliated with or endorsed by Topaz Labs.

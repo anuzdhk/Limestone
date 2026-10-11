@@ -70,7 +70,6 @@ pub const SURFACE_CARD: Color32 = Color32::from_rgb(23, 26, 33); // #171A21
 pub const SURFACE_RAISED: Color32 = Color32::from_rgb(31, 35, 44); // #1F232C
 
 pub const BORDER_SUBTLE: Color32 = Color32::from_rgb(42, 47, 58); // #2A2F3A
-pub const BORDER_FOCUS: Color32 = Color32::from_rgb(0, 210, 255);
 
 pub const ACCENT: Color32 = Color32::from_rgb(0, 210, 255);
 pub const ACCENT_HOVER: Color32 = Color32::from_rgb(51, 220, 255);
@@ -101,7 +100,6 @@ pub const SPACE_24: f32 = 24.0;
 
 pub const RADIUS_CONTROL: CornerRadius = CornerRadius::same(6);
 pub const RADIUS_CARD: CornerRadius = CornerRadius::same(10);
-pub const RADIUS_PILL: CornerRadius = CornerRadius::same(14);
 
 pub const HEIGHT_TOOLBAR: f32 = 48.0;
 pub const HEIGHT_STATUSBAR: f32 = 24.0;
@@ -111,7 +109,6 @@ pub const WIDTH_SIDEBAR_RIGHT: f32 = 330.0;
 // Standard button dimensions
 pub const BTN_HEIGHT_SM: f32 = 24.0;
 pub const BTN_HEIGHT_MD: f32 = 28.0;
-pub const BTN_HEIGHT_LG: f32 = 32.0;
 
 // ============================================================================
 // 4. THEME APPLICATION WITH DYNAMIC CUSTOMIZATION
@@ -265,10 +262,6 @@ pub fn apply_theme_configured(
     ctx.set_zoom_factor(ui_scale.clamp(0.75, 1.75));
 }
 
-pub fn apply_theme(ctx: &egui::Context) {
-    apply_theme_configured(ctx, ThemeMode::DarkStudio, AccentTheme::ElectricCyan, 1.0);
-}
-
 // ============================================================================
 // 5. DYNAMIC THEME-AWARE COLOR RETRIEVAL HELPERS
 // ============================================================================
@@ -313,13 +306,6 @@ pub fn theme_surface_card(visuals: &egui::Visuals) -> Color32 {
     }
 }
 
-pub fn theme_surface_raised(visuals: &egui::Visuals) -> Color32 {
-    if visuals.dark_mode {
-        SURFACE_RAISED
-    } else {
-        Color32::from_rgb(235, 239, 245)
-    }
-}
 
 pub fn theme_border(visuals: &egui::Visuals) -> Color32 {
     if visuals.dark_mode {

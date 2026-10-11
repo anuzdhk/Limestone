@@ -5,7 +5,7 @@
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS-lightgrey.svg)]()
 [![Release](https://img.shields.io/badge/release-v0.1.0--beta-brightgreen.svg)](https://github.com/anuzdhk/Limestone/releases)
 
-A clean-room, zero-overhead Rust desktop application and reverse-engineered clone of **Topaz Adjust 4.0**. Features multithreaded $O(1)$ separable guided filtering, Retinex local tone mapping, micro-contrast enhancement, natural cubic spline curve manipulation, and a pro studio UI powered by [egui](https://github.com/emilk/egui) and [Tabler Icons](https://tabler.io/icons).
+A clean-room Rust desktop photo-adjustment studio inspired by the classic *Topaz Adjust 4* workflow. Features multithreaded $O(1)$ separable guided filtering, Retinex local tone mapping, micro-contrast enhancement, natural cubic spline curve manipulation, and a pro studio UI powered by [egui](https://github.com/emilk/egui) and [Tabler Icons](https://tabler.io/icons).
 
 ---
 
@@ -13,9 +13,10 @@ A clean-room, zero-overhead Rust desktop application and reverse-engineered clon
 
 | Platform | Package Format | Download / Build |
 | :--- | :--- | :--- |
-| **Windows (x64)** | **MSI Installer** (`.msi`) | [`dist/LimeStone-0.1.0-beta-x64.msi`](dist/LimeStone-0.1.0-beta-x64.msi) |
-| **Windows (x64)** | **Portable Binary** (`.exe`) | [`bin/Limestone.exe`](bin/Limestone.exe) |
-| **macOS (Universal)** | **Apple Disk Image** (`.dmg`) | [GitHub Release / CI Artifact](https://github.com/anuzdhk/Limestone/actions) or run `./scripts/build_macos_dmg.sh` |
+| **Windows (x64)** | **MSI Installer** (`.msi`) | [GitHub Releases](https://github.com/anuzdhk/Limestone/releases) or run `.\scripts\build_windows_msi.ps1` |
+| **macOS (Universal)** | **Apple Disk Image** (`.dmg`) | [GitHub Releases](https://github.com/anuzdhk/Limestone/releases) or run `./scripts/build_macos_dmg.sh` |
+
+Installers are built by CI (`.github/workflows/release.yml`) when a `v*` tag is pushed; binaries are not committed to the repository.
 
 
 ---
@@ -25,7 +26,7 @@ A clean-room, zero-overhead Rust desktop application and reverse-engineered clon
 ### 🎨 Pro UI
 - **Obsidian Dark Palette**: High-contrast, fatigue-free dark theme (`#101115` / `#16171c` / `#21232b`) with vibrant cyan accenting (`#00d2ff`).
 - **Tabler Icons Integration**: Crisp vector iconography throughout toolbar, adjustment tabs, and collections.
-- **Topaz 4 View Modes**:
+- **View Modes**:
   - **Single View**: Full canvas with hold-`Spacebar` for instant before/after toggle.
   - **Split Wipe**: Interactive divider slider comparing original vs. processed in real-time.
   - **Side-by-Side**: Dual synchronized preview comparison.
@@ -34,13 +35,13 @@ A clean-room, zero-overhead Rust desktop application and reverse-engineered clon
   - `LOUPE`: 400% zoom loupe targeting critical micro-textures and skin details.
   - `HISTOGRAM`: Live 256-bin RGB and perceptual luminance distribution graph.
 - **Effect Stacking (`Apply` Button Workflow)**:
-  - Supports stacking multiple effects in a single session (e.g. *Exposure Correction* $\rightarrow$ *Detail Light* $\rightarrow$ *Warm Tone*) with full layer undo capability.
+  - Supports stacking multiple effects in a single session (e.g. *Exposure Correction* $\rightarrow$ *Detail Light* $\rightarrow$ *Warm Tone*) with full layer undo capability (Undo Layer restores the image exactly as it was before the last Apply).
 
 ---
 
 ### ⚡ Algorithmic DSP Pipeline (`adjust-core`)
 
-The image processing engine operates entirely on parallel 32-bit floating-point channels (`RgbImageF32`) with zero heap reallocations during parameter changes:
+The image processing engine operates entirely on parallel 32-bit floating-point channels (`RgbImageF32`) in gamma-encoded sRGB space (values `0.0..=1.0`). Spatial radii are defined relative to a 1000px reference so the 960px live preview, 100% zoom tiles, and full-resolution exports all match:
 
 ```
 Input Image (RGB f32)
@@ -81,13 +82,13 @@ Final Output Image
    $$\gamma = \exp(-(0.5 - \text{base}) \cdot \text{strength})$$
    Ensures non-inverting luminance curves that eliminate shadow crushing and severe halos.
 3. **Interactive Spline Curves**: Piecewise cubic Hermite interpolation generating 1024-entry lookup tables (LUT) evaluated via vectorized parallel array lookups.
-4. **Sub-15ms Live Preview Engine**: Real-time 960px downsampled interactive proxy during slider scrubs and curve dragging; exports render against the full original resolution.
+4. **Background Live Preview Engine**: A 960px downsampled proxy is processed on a worker thread so the UI never blocks; exports and zoomed tiles render against the full original resolution with resolution-independent radii.
 
 ---
 
-## 🗂️ Complete Topaz 4 Preset Collections
+## 🗂️ Factory Preset Collections
 
-Includes all factory presets reverse engineered with slider and curve configurations:
+Includes factory presets with slider and curve configurations:
 
 | Collection | Included Presets |
 | :--- | :--- |
@@ -105,9 +106,6 @@ Includes all factory presets reverse engineered with slider and curve configurat
 
 ```
 .
-├── bin/
-│   ├── adjust-gui.exe             # Compiled standalone GUI application
-│   └── adjust-cli.exe             # Compiled CLI batch processing tool
 ├── crates/
 │   ├── adjust-core/               # Pure Rust DSP image filtering engine
 │   │   ├── src/
@@ -128,7 +126,9 @@ Includes all factory presets reverse engineered with slider and curve configurat
 ├── docs/
 │   ├── topaz_adjust_4_reverse_engineering_spec.md  # Complete mathematical & UI spec
 │   └── rust_implementation_plan.md                 # Phased architecture roadmap
-└── presets/                       # Exported factory presets in JSON format
+├── presets/                       # Exported factory presets in JSON format
+├── scripts/                       # Local MSI / DMG packaging scripts
+└── wix/                           # WiX installer definition
 ```
 
 ---
@@ -145,8 +145,8 @@ Clone the repository and build the workspace in release mode:
 
 ```bash
 # Clone repository
-git clone https://github.com/anuzd/Androp.git
-cd Androp
+git clone https://github.com/anuzdhk/Limestone.git
+cd Limestone
 
 # Build all crates in Release mode
 cargo build --release
@@ -159,7 +159,7 @@ Launch the standalone studio:
 ```bash
 cargo run --release -p adjust-gui
 ```
-*Or execute the standalone binary directly: `.\bin\adjust-gui.exe`.*
+*Or run the release binary directly: `.\target\release\adjust-gui.exe`.*
 
 #### Keyboard & Mouse Shortcuts:
 - **`Spacebar` (Hold)**: Toggle instantaneous comparison with the original image.
@@ -178,13 +178,14 @@ Batch process images or export presets without opening the GUI:
 
 ```bash
 # Apply a factory preset to an image
-cargo run --release -p adjust-cli -- process input.jpg output.png --preset spicify
+cargo run --release -p adjust-cli -- --input input.jpg --output output.png --preset spicify
 
 # Apply a custom JSON preset
-cargo run --release -p adjust-cli -- process input.jpg output.png --config presets/dramatic.json
+cargo run --release -p adjust-cli -- --input input.jpg --output output.png --preset-file presets/dramatic.json
 
-# Export all factory presets as JSON files
-cargo run --release -p adjust-cli -- export-presets ./presets
+# List factory presets / export one as JSON
+cargo run --release -p adjust-cli -- list-presets
+cargo run --release -p adjust-cli -- export-preset --name dramatic --output presets/dramatic.json
 ```
 
 ---
@@ -194,11 +195,11 @@ cargo run --release -p adjust-cli -- export-presets ./presets
 Run the automated DSP test suite verifying that all presets render deterministic, non-clipping pixels across multithreaded chunks:
 
 ```bash
-cargo test -p adjust-core
+cargo test --workspace
 ```
 
 ---
 
 ## 📄 License
 
-This project is licensed under the MIT License. See [LICENSE](LICENSE) for details. Topaz Adjust 4.0 is a trademark of Topaz Labs LLC; this project is an independent clean-room re-implementation.
+This project is licensed under the MIT License. See [LICENSE](LICENSE) for details. Topaz Adjust is a trademark of Topaz Labs LLC. LimeStone is an independent project and is not affiliated with, endorsed by, or sponsored by Topaz Labs.

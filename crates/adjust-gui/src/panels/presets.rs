@@ -12,6 +12,7 @@ pub struct PresetPanelResponse {
     pub open_recent_path: Option<PathBuf>,
 }
 
+#[allow(clippy::too_many_arguments)] // one argument per piece of widget state
 pub fn render_presets_sidebar(
     ui: &mut Ui,
     presets: &[Preset],
@@ -141,7 +142,6 @@ pub fn render_presets_sidebar(
             }
 
             let card_fill = theme_surface_card(ui.visuals());
-            let raised_fill = theme_surface_raised(ui.visuals());
 
             for preset in filtered_presets {
                 let is_selected = selected_preset_name == preset.name;

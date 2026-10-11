@@ -5,7 +5,7 @@ use std::time::Instant;
 
 #[derive(Parser, Debug)]
 #[command(name = "adjust-cli")]
-#[command(about = "Topaz Adjust 4.0 CLI Image Processing Engine", long_about = None)]
+#[command(about = "LimeStone CLI image adjustment engine", long_about = None)]
 struct Cli {
     #[command(subcommand)]
     command: Option<Commands>,
@@ -47,7 +47,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     if let Some(cmd) = cli.command {
         match cmd {
             Commands::ListPresets => {
-                println!("=== Topaz Adjust 4.0 Factory Presets ===");
+                println!("=== LimeStone Factory Presets ===");
                 for preset in get_factory_presets() {
                     println!("\n* {} [{}]", preset.name, preset.category);
                     println!("  {}", preset.description);
@@ -89,9 +89,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("Loading image: {}", input_path.display());
     let load_start = Instant::now();
-    let img = image::open(&input_path)?.to_rgb8();
-    let width = img.width() as usize;
-    let height = img.height() as usize;
+    let f_img = RgbImageF32::open(&input_path)?;
+    let (width, height) = (f_img.width, f_img.height);
     println!("Image loaded: {}x{} in {:.2?}", width, height, load_start.elapsed());
 
     // Resolve parameters
@@ -110,17 +109,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         selected.params.clone()
     };
 
-    let f_img = RgbImageF32::from_rgb8(&img);
-
-    println!("Processing image through Topaz Adjust DSP pipeline...");
+    println!("Processing image through the adjustment pipeline...");
     let proc_start = Instant::now();
     let out_f_img = process_image(&f_img, &params);
     let proc_dur = proc_start.elapsed();
     println!("Pipeline completed in {:.2?} ({:.1} MP/s)", proc_dur, (width * height) as f64 / 1_000_000.0 / proc_dur.as_secs_f64());
 
     println!("Saving output to: {}", output_path.display());
-    let out_rgb8 = out_f_img.to_rgb8();
-    out_rgb8.save(&output_path)?;
+    out_f_img.save(&output_path)?;
     println!("Successfully processed and saved.");
 
     Ok(())

@@ -7,13 +7,13 @@ pub mod preset;
 pub mod stages;
 
 // Re-exports for convenient usage
-pub use image_buffer::RgbImageF32;
+pub use image_buffer::{open_oriented, RgbImageF32};
 pub use params::{
     AdaptiveExposureParams, AdjustParams, BasicExposureParams, BorderParams, ColorParams,
     CurveParams, CurvePoint, DetailsParams, FinishingParams, GrainParams, NoiseParams,
     VignetteParams,
 };
-pub use pipeline::process_image;
+pub use pipeline::{process_image, process_region, process_with_context, RenderContext, REFERENCE_DIM};
 pub use preset::{get_factory_presets, Preset};
 pub use stages::curve::{compute_histogram, generate_curve_lut, HistogramData};
 

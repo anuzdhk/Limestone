@@ -1,17 +1,17 @@
+// Release builds are GUI-only: no console window on Windows.
+#![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
+
 mod config;
 mod curve_widget;
 mod export_queue;
 mod icons;
 mod panels;
 mod recovery;
+mod render_worker;
 mod theme;
-mod tiled_view;
 mod widgets;
 
-use adjust_core::{
-    compute_histogram, get_factory_presets, process_image, AdjustParams, HistogramData, Preset,
-    RgbImageF32,
-};
+use adjust_core::{get_factory_presets, AdjustParams, HistogramData, Preset, RgbImageF32};
 use config::{AppConfig, AppLanguage};
 use eframe::egui;
 use export_queue::{BackgroundExporter, ExportJob, ExportResult};
@@ -24,10 +24,10 @@ use panels::presets::render_presets_sidebar;
 use panels::statusbar::render_bottom_statusbar;
 use panels::toolbar::{render_top_toolbar, ViewMode};
 use recovery::AutoSaveManager;
+use render_worker::{PixelRect, RenderResult, RenderWorker, TileKey, PREVIEW_MAX_DIM};
 use std::path::PathBuf;
-use std::time::Instant;
+use std::sync::Arc;
 use theme::*;
-use tiled_view::TiledViewer;
 use widgets::toast::ToastManager;
 
 fn load_app_icon() -> Option<egui::IconData> {
@@ -76,9 +76,16 @@ fn main() -> eframe::Result<()> {
 struct AdjustApp {
     config: AppConfig,
     image_path: Option<PathBuf>,
-    original_f32: Option<RgbImageF32>,
-    preview_orig_f32: Option<RgbImageF32>,
-    preview_proc_f32: Option<RgbImageF32>,
+    /// Image exactly as loaded (no layers applied).
+    source_f32: Option<Arc<RgbImageF32>>,
+    /// Full-resolution image with all applied layers baked in; the current params render on top.
+    base_f32: Option<Arc<RgbImageF32>>,
+    /// Downsampled proxy of `base_f32` used for interactive previews.
+    preview_base: Option<Arc<RgbImageF32>>,
+    /// Bumped whenever `base_f32` changes so stale tiles/bakes are discarded.
+    base_version: u64,
+    preview_generation: u64,
+    baking: bool,
 
     orig_texture: Option<egui::TextureHandle>,
     proc_texture: Option<egui::TextureHandle>,
@@ -106,7 +113,15 @@ struct AdjustApp {
     // Undo / Redo & effect stacking
     undo_stack: Vec<AdjustParams>,
     redo_stack: Vec<AdjustParams>,
+    /// Params of each applied ("baked") layer, oldest first. `base_f32` == source + these layers.
     layer_snapshots: Vec<AdjustParams>,
+
+    // Full-resolution tile shown when zoomed in past the preview's resolution
+    tile: Option<(TileKey, egui::TextureHandle)>,
+    pending_tile: Option<TileKey>,
+    canvas_img_rect: Option<egui::Rect>,
+    canvas_rect: Option<egui::Rect>,
+    fit_pending: bool,
 
     // UI state & services
     show_sidebars: bool,
@@ -114,12 +129,12 @@ struct AdjustApp {
     show_settings_modal: bool,
     toasts: ToastManager,
     exporter: BackgroundExporter,
-    tiled_viewer: TiledViewer,
+    worker: RenderWorker,
     auto_saver: AutoSaveManager,
 }
 
 impl AdjustApp {
-    fn new(_cc: &eframe::CreationContext<'_>, config: AppConfig) -> Self {
+    fn new(cc: &eframe::CreationContext<'_>, config: AppConfig) -> Self {
         let presets = get_factory_presets();
         let default_preset = presets
             .iter()
@@ -130,9 +145,12 @@ impl AdjustApp {
         let mut app = Self {
             config,
             image_path: None,
-            original_f32: None,
-            preview_orig_f32: None,
-            preview_proc_f32: None,
+            source_f32: None,
+            base_f32: None,
+            preview_base: None,
+            base_version: 0,
+            preview_generation: 0,
+            baking: false,
             orig_texture: None,
             proc_texture: None,
             nav_texture: None,
@@ -155,25 +173,32 @@ impl AdjustApp {
             undo_stack: Vec::new(),
             redo_stack: Vec::new(),
             layer_snapshots: Vec::new(),
+            tile: None,
+            pending_tile: None,
+            canvas_img_rect: None,
+            canvas_rect: None,
+            fit_pending: true,
             show_sidebars: true,
             show_shortcuts_modal: false,
             show_settings_modal: false,
             toasts: ToastManager::new(),
             exporter: BackgroundExporter::new(),
-            tiled_viewer: TiledViewer::new(),
+            worker: RenderWorker::new(cc.egui_ctx.clone()),
             auto_saver: AutoSaveManager::new(),
         };
 
-        // Check for crash recovery session
+        // A recovery file only survives an unclean exit (it is deleted in `on_exit`).
         if let Some(recovery) = AutoSaveManager::try_recover() {
-            if let Some(ref path) = recovery.image_path {
-                if path.exists() {
-                    if let Ok(img) = image::open(path) {
-                        app.set_image(img.to_rgb8(), path.clone());
-                        app.params = recovery.params;
-                        app.toasts.info("Restored previous session automatically");
-                        return app;
+            if let Some(path) = recovery.image_path.clone().filter(|p| p.exists()) {
+                if let Ok(img) = RgbImageF32::open(&path) {
+                    app.set_image(img, Some(path));
+                    app.params = recovery.params;
+                    if !recovery.layers.is_empty() {
+                        app.layer_snapshots = recovery.layers;
+                        app.rebake_layers();
                     }
+                    app.toasts.info("Recovered your previous session after an unexpected exit");
+                    return app;
                 }
             }
         }
@@ -241,35 +266,89 @@ impl AdjustApp {
             }
         }
 
-        self.set_image(img, PathBuf::from("sample_landscape.png"));
+        self.set_image(RgbImageF32::from_rgb8(&img), None);
     }
 
-    fn set_image(&mut self, img: RgbImage, path: PathBuf) {
-        let f32_full = RgbImageF32::from_rgb8(&img);
-        let preview = f32_full.downsample(960);
+    /// Replaces the working image. `path` is `None` for images without a file (sample, clipboard).
+    fn set_image(&mut self, img: RgbImageF32, path: Option<PathBuf>) {
+        let source = Arc::new(img);
+        let label = match &path {
+            Some(p) => p.file_name().unwrap_or_default().to_string_lossy().into_owned(),
+            None => format!("{}×{} image", source.width, source.height),
+        };
 
-        self.image_path = Some(path.clone());
-        self.original_f32 = Some(f32_full);
-        self.preview_orig_f32 = Some(preview);
+        self.preview_base = Some(Arc::new(source.downsample(PREVIEW_MAX_DIM)));
+        self.base_f32 = Some(source.clone());
+        self.source_f32 = Some(source);
+        self.base_version += 1;
+        self.baking = false;
+        self.layer_snapshots.clear();
+        self.image_path = path.clone();
         self.orig_texture = None;
         self.proc_texture = None;
         self.nav_texture = None;
-        self.tiled_viewer.invalidate();
+        self.tile = None;
+        self.pending_tile = None;
+        self.fit_pending = true;
         self.is_dirty = true;
 
-        if path != PathBuf::from("sample_landscape.png") {
-            self.config.add_recent(path.clone());
+        if let Some(path) = path {
+            self.config.add_recent(path);
         }
-
-        self.toasts.success(format!(
-            "Opened {}",
-            path.file_name().unwrap_or_default().to_string_lossy()
-        ));
+        self.toasts.success(format!("Opened {}", label));
     }
 
+    fn open_image_path(&mut self, path: PathBuf) {
+        match RgbImageF32::open(&path) {
+            Ok(img) => self.set_image(img, Some(path)),
+            Err(e) => self.toasts.error(format!(
+                "Failed to open {}: {}",
+                path.file_name().unwrap_or_default().to_string_lossy(),
+                e
+            )),
+        }
+    }
+
+    /// Pastes a bitmap, a copied file (e.g. from Explorer/Finder), or a file path from the clipboard.
     fn paste_image_from_clipboard(&mut self) {
-        // Read image bytes/file or simulate paste
-        self.toasts.info("Checked clipboard for image");
+        let mut clipboard = match arboard::Clipboard::new() {
+            Ok(c) => c,
+            Err(e) => {
+                self.toasts.error(format!("Clipboard unavailable: {}", e));
+                return;
+            }
+        };
+
+        if let Ok(data) = clipboard.get_image() {
+            let (w, h) = (data.width as u32, data.height as u32);
+            if let Some(rgba) = image::RgbaImage::from_raw(w, h, data.bytes.into_owned()) {
+                let mut img = RgbImageF32::from_rgba8(&rgba);
+                // Clipboard bitmaps often carry a meaningless fully-opaque alpha channel.
+                if img.alpha.as_ref().is_some_and(|a| a.iter().all(|&v| v >= 1.0)) {
+                    img.alpha = None;
+                }
+                self.set_image(img, None);
+                return;
+            }
+        }
+
+        let path = clipboard
+            .get()
+            .file_list()
+            .ok()
+            .and_then(|files| files.into_iter().next())
+            .or_else(|| {
+                clipboard
+                    .get_text()
+                    .ok()
+                    .map(|t| PathBuf::from(t.trim().trim_matches('"')))
+            })
+            .filter(|p| p.is_file());
+
+        match path {
+            Some(path) => self.open_image_path(path),
+            None => self.toasts.warn("Clipboard does not contain an image"),
+        }
     }
 
     fn open_image_dialog(&mut self) {
@@ -280,16 +359,16 @@ impl AdjustApp {
             )
             .pick_file()
         {
-            if let Ok(img) = image::open(&path) {
-                self.set_image(img.to_rgb8(), path);
-            } else {
-                self.toasts.error("Failed to decode image file");
-            }
+            self.open_image_path(path);
         }
     }
 
     fn queue_export_dialog(&mut self) {
-        if let Some(ref full_orig) = self.original_f32 {
+        if self.baking {
+            self.toasts.warn("Please wait until the applied layer finishes rendering");
+            return;
+        }
+        if let Some(ref base) = self.base_f32 {
             if let Some(path) = rfd::FileDialog::new()
                 .add_filter("PNG Image", &["png"])
                 .add_filter("JPEG Image", &["jpg", "jpeg"])
@@ -297,9 +376,8 @@ impl AdjustApp {
                 .save_file()
             {
                 self.exporter.queue_export(ExportJob {
-                    image_path: self.image_path.clone(),
                     save_path: path.clone(),
-                    original_f32: full_orig.clone(),
+                    base: base.clone(),
                     params: self.params.clone(),
                 });
                 self.toasts.info(format!(
@@ -312,36 +390,85 @@ impl AdjustApp {
         }
     }
 
-    fn trigger_reprocess(&mut self, ctx: &egui::Context) {
-        self.is_rendering = true;
-        if let Some(ref orig) = self.preview_orig_f32 {
-            let start = Instant::now();
-            let proc = process_image(orig, &self.params);
-            self.last_process_time = start.elapsed().as_secs_f32() * 1000.0;
+    /// Queues a preview render of the current params on the background worker.
+    fn trigger_reprocess(&mut self) {
+        // While a layer is baking the preview base is stale; render once the bake lands.
+        if self.baking {
+            return;
+        }
+        if let Some(ref preview) = self.preview_base {
+            self.preview_generation += 1;
+            self.worker
+                .request_preview(self.preview_generation, preview.clone(), self.params.clone());
+            self.is_rendering = true;
+        }
+        self.is_dirty = false;
 
-            self.histogram = Some(compute_histogram(&proc));
+        self.auto_saver
+            .auto_save(self.image_path.as_ref(), &self.layer_snapshots, &self.params);
+    }
 
-            let rgb8 = proc.to_rgb8();
-            let color_image = egui::ColorImage::from_rgb(
-                [rgb8.width() as usize, rgb8.height() as usize],
-                rgb8.as_raw(),
-            );
-
-            self.proc_texture = Some(ctx.load_texture(
-                "processed_view",
-                color_image,
-                egui::TextureOptions::LINEAR,
-            ));
-            self.preview_proc_f32 = Some(proc);
+    /// Applies finished background renders to the UI state.
+    fn poll_worker(&mut self, ctx: &egui::Context) {
+        for result in self.worker.poll() {
+            match result {
+                RenderResult::Preview {
+                    generation,
+                    color_image,
+                    histogram,
+                    elapsed_ms,
+                } => {
+                    if generation != self.preview_generation {
+                        continue; // superseded by a newer request
+                    }
+                    match self.proc_texture {
+                        Some(ref mut tex) => tex.set(color_image, egui::TextureOptions::LINEAR),
+                        None => {
+                            self.proc_texture = Some(ctx.load_texture(
+                                "processed_view",
+                                color_image,
+                                egui::TextureOptions::LINEAR,
+                            ))
+                        }
+                    }
+                    self.histogram = Some(*histogram);
+                    self.last_process_time = elapsed_ms;
+                    self.is_rendering = false;
+                }
+                RenderResult::Tile { key, color_image } => {
+                    if self.pending_tile.as_ref() == Some(&*key) {
+                        let tex = ctx.load_texture(
+                            "high_res_view_tile",
+                            color_image,
+                            egui::TextureOptions::LINEAR,
+                        );
+                        self.tile = Some((*key, tex));
+                        self.pending_tile = None;
+                    }
+                }
+                RenderResult::Baked {
+                    base_version,
+                    base,
+                    preview,
+                } => {
+                    if base_version != self.base_version {
+                        continue; // a newer bake (or a new image) replaced this one
+                    }
+                    self.base_f32 = Some(base);
+                    self.preview_base = Some(preview);
+                    self.baking = false;
+                    self.orig_texture = None;
+                    self.tile = None;
+                    self.pending_tile = None;
+                    self.is_dirty = true;
+                }
+            }
         }
 
+        // (Re)create the "before" textures from the current base proxy.
         if self.orig_texture.is_none() {
-            if let Some(ref orig) = self.preview_orig_f32 {
-                let rgb8 = orig.to_rgb8();
-                let color_image = egui::ColorImage::from_rgb(
-                    [rgb8.width() as usize, rgb8.height() as usize],
-                    rgb8.as_raw(),
-                );
+            if let Some(ref preview) = self.preview_base {
+                let color_image = render_worker::to_color_image(preview);
                 self.orig_texture = Some(ctx.load_texture(
                     "original_view",
                     color_image.clone(),
@@ -354,16 +481,181 @@ impl AdjustApp {
                 ));
             }
         }
+    }
 
-        self.tiled_viewer.invalidate();
-        self.is_dirty = false;
-        self.is_rendering = false;
+    /// Re-renders the base image from the source with the current layer stack.
+    fn rebake_layers(&mut self) {
+        if let Some(ref source) = self.source_f32 {
+            self.base_version += 1;
+            self.baking = true;
+            self.tile = None;
+            self.pending_tile = None;
+            self.worker
+                .request_bake(self.base_version, source.clone(), self.layer_snapshots.clone());
+        }
+    }
 
-        // Trigger autosave
-        self.auto_saver.auto_save(self.image_path.as_ref(), &self.params);
+    /// "Apply": bakes the current params into the full-resolution base image as a new layer.
+    fn apply_layer(&mut self) {
+        if self.baking {
+            self.toasts.warn("Still applying the previous layer");
+            return;
+        }
+        let Some(base) = self.base_f32.clone() else {
+            return;
+        };
+        let params = std::mem::take(&mut self.params);
+        self.layer_snapshots.push(params.clone());
+        self.base_version += 1;
+        self.baking = true;
+        self.tile = None;
+        self.pending_tile = None;
+        self.worker.request_bake(self.base_version, base, vec![params]);
+
+        self.selected_preset_name = "Neutral".to_string();
+        self.undo_stack.clear();
+        self.redo_stack.clear();
+        self.is_dirty = true;
+        self.toasts.success("Applying effect layer…");
+    }
+
+    /// "Undo Layer": removes the last applied layer and puts its settings back on the sliders.
+    fn undo_layer(&mut self) {
+        if self.baking {
+            self.toasts.warn("Still applying the previous layer");
+            return;
+        }
+        if let Some(last) = self.layer_snapshots.pop() {
+            self.params = last;
+            self.selected_preset_name = "Custom".to_string();
+            self.undo_stack.clear();
+            self.redo_stack.clear();
+            self.rebake_layers();
+            self.is_dirty = true;
+            self.toasts.info("Removed last effect layer");
+        }
+    }
+
+    /// "Cancel": drops every applied layer and resets the sliders.
+    fn cancel_all_layers(&mut self) {
+        self.params = AdjustParams::default();
+        self.selected_preset_name = "Neutral".to_string();
+        if !self.layer_snapshots.is_empty() {
+            self.layer_snapshots.clear();
+            self.rebake_layers();
+        }
+        self.undo_stack.clear();
+        self.redo_stack.clear();
+        self.is_dirty = true;
+        self.toasts.warn("Canceled all adjustments");
+    }
+
+    /// Size of the full-resolution image in pixels.
+    fn image_px_size(&self) -> Option<egui::Vec2> {
+        self.base_f32
+            .as_ref()
+            .map(|img| egui::vec2(img.width as f32, img.height as f32))
+    }
+
+    /// Zoom (physical pixels per image pixel) that fits the image inside the canvas.
+    fn fit_zoom(&self, ctx: &egui::Context) -> f32 {
+        let Some(img) = self.image_px_size() else {
+            return 1.0;
+        };
+        let ppp = ctx.pixels_per_point();
+        let canvas = self.canvas_size;
+        let zoom = (canvas.x / img.x).min(canvas.y / img.y) * 0.95 * ppp;
+        if zoom.is_finite() && zoom > 0.0 {
+            zoom
+        } else {
+            1.0
+        }
+    }
+
+    /// Requests a full-resolution tile for the visible area when the preview proxy
+    /// would be magnified (i.e. zoomed in past the preview's own resolution).
+    fn update_tile_request(&mut self, ctx: &egui::Context) {
+        let wants_tile = self.config.high_quality_tiled_preview
+            && self.view_mode == ViewMode::Single
+            && !self.baking;
+        let (Some(base), Some(preview), Some(img_rect), Some(canvas_rect)) = (
+            self.base_f32.clone(),
+            self.preview_base.as_ref(),
+            self.canvas_img_rect,
+            self.canvas_rect,
+        ) else {
+            return;
+        };
+        let preview_zoom = preview.width as f32 / base.width as f32;
+        if !wants_tile || self.zoom <= preview_zoom * 1.05 || base.width <= preview.width {
+            self.pending_tile = None;
+            return;
+        }
+
+        let visible = canvas_rect.intersect(img_rect);
+        if visible.width() < 4.0 || visible.height() < 4.0 {
+            return;
+        }
+        let to_px = |screen: f32, min: f32, len: f32, px: usize| {
+            ((screen - min) / len * px as f32).clamp(0.0, px as f32)
+        };
+        // Snap outwards to a 128px grid so small pans reuse the same tile.
+        const GRID: usize = 128;
+        let x0 = to_px(visible.min.x, img_rect.min.x, img_rect.width(), base.width) as usize / GRID * GRID;
+        let y0 = to_px(visible.min.y, img_rect.min.y, img_rect.height(), base.height) as usize / GRID * GRID;
+        let x1 = (to_px(visible.max.x, img_rect.min.x, img_rect.width(), base.width).ceil() as usize)
+            .div_ceil(GRID)
+            .saturating_mul(GRID)
+            .min(base.width);
+        let y1 = (to_px(visible.max.y, img_rect.min.y, img_rect.height(), base.height).ceil() as usize)
+            .div_ceil(GRID)
+            .saturating_mul(GRID)
+            .min(base.height);
+        if x1 <= x0 || y1 <= y0 || (x1 - x0) * (y1 - y0) > 8_000_000 {
+            return;
+        }
+
+        let key = TileKey {
+            base_version: self.base_version,
+            params: self.params.clone(),
+            rect: PixelRect {
+                x: x0,
+                y: y0,
+                w: x1 - x0,
+                h: y1 - y0,
+            },
+        };
+        let already_have = self.tile.as_ref().is_some_and(|(k, _)| *k == key);
+        if !already_have && self.pending_tile.as_ref() != Some(&key) {
+            self.worker.request_tile(key.clone(), base);
+            self.pending_tile = Some(key);
+            ctx.request_repaint();
+        }
+    }
+
+    /// The current tile and its normalized rect, if it matches what's on screen.
+    fn visible_tile(&self) -> Option<(egui::TextureHandle, egui::Rect)> {
+        let (key, tex) = self.tile.as_ref()?;
+        if key.base_version != self.base_version || key.params != self.params {
+            return None;
+        }
+        let base = self.base_f32.as_ref()?;
+        let (w, h) = (base.width as f32, base.height as f32);
+        let r = key.rect;
+        let norm = egui::Rect::from_min_max(
+            egui::pos2(r.x as f32 / w, r.y as f32 / h),
+            egui::pos2((r.x + r.w) as f32 / w, (r.y + r.h) as f32 / h),
+        );
+        Some((tex.clone(), norm))
     }
 
     fn handle_keyboard_shortcuts(&mut self, ctx: &egui::Context) {
+        // Don't steal keys (digits, F, Ctrl+V...) while the user is typing in a text field.
+        if ctx.wants_keyboard_input() {
+            return;
+        }
+        let fit_zoom = self.fit_zoom(ctx);
+        let mut paste = false;
         ctx.input(|i| {
             if i.key_pressed(egui::Key::Tab) {
                 self.show_sidebars = !self.show_sidebars;
@@ -386,7 +678,7 @@ impl AdjustApp {
             }
 
             if i.key_pressed(egui::Key::F) {
-                self.zoom = 1.0;
+                self.zoom = fit_zoom;
                 self.pan = egui::Vec2::ZERO;
             }
             if i.key_pressed(egui::Key::Num0) {
@@ -405,10 +697,16 @@ impl AdjustApp {
             if i.modifiers.command && i.key_pressed(egui::Key::E) {
                 self.queue_export_dialog();
             }
-            if i.modifiers.command && i.key_pressed(egui::Key::V) {
-                self.paste_image_from_clipboard();
-            }
+            // egui-winit consumes the Ctrl+V *press* (and emits nothing for image clipboards),
+            // so react to the key release instead and read the clipboard ourselves.
+            paste = i.events.iter().any(|e| {
+                matches!(e, egui::Event::Key { key: egui::Key::V, pressed: false, modifiers, .. }
+                    if modifiers.command)
+            });
         });
+        if paste {
+            self.paste_image_from_clipboard();
+        }
     }
 
     fn render_settings_modal(&mut self, ctx: &egui::Context) {
@@ -590,6 +888,12 @@ impl AdjustApp {
 }
 
 impl eframe::App for AdjustApp {
+    fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
+        // A clean exit means there is nothing to recover next launch.
+        self.auto_saver.clear_recovery();
+        self.config.save();
+    }
+
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         // Poll background export results
         for res in self.exporter.poll_results() {
@@ -613,12 +917,21 @@ impl eframe::App for AdjustApp {
             }
         }
 
+        // Collect finished background renders
+        self.poll_worker(ctx);
+
+        if self.fit_pending && self.base_f32.is_some() {
+            self.zoom = self.fit_zoom(ctx);
+            self.pan = egui::Vec2::ZERO;
+            self.fit_pending = false;
+        }
+
         // Handle Global Shortcuts
         self.handle_keyboard_shortcuts(ctx);
 
-        // Reprocess DSP if dirty
+        // Queue a preview render if parameters changed
         if self.is_dirty {
-            self.trigger_reprocess(ctx);
+            self.trigger_reprocess();
         }
 
         // ==========================================
@@ -669,7 +982,7 @@ impl eframe::App for AdjustApp {
                     self.toasts.info("Reset all parameters to default");
                 }
                 if tb_resp.fit_clicked {
-                    self.zoom = 1.0;
+                    self.zoom = self.fit_zoom(ui.ctx());
                     self.pan = egui::Vec2::ZERO;
                 }
                 if tb_resp.zoom_100_clicked {
@@ -690,16 +1003,16 @@ impl eframe::App for AdjustApp {
             .exact_height(HEIGHT_STATUSBAR)
             .show(ctx, |ui| {
                 let dimensions = self
-                    .original_f32
+                    .base_f32
                     .as_ref()
                     .map(|img| (img.width, img.height));
                 render_bottom_statusbar(
                     ui,
                     dimensions,
                     self.zoom,
-                    self.is_rendering || self.exporter.active_jobs() > 0,
+                    self.is_rendering || self.baking || self.exporter.active_jobs() > 0,
                     self.last_process_time,
-                    self.original_f32.is_some(),
+                    self.base_f32.is_some(),
                 );
             });
 
@@ -724,11 +1037,7 @@ impl eframe::App for AdjustApp {
                     );
 
                     if let Some(recent_path) = p_resp.open_recent_path {
-                        if let Ok(img) = image::open(&recent_path) {
-                            self.set_image(img.to_rgb8(), recent_path);
-                        } else {
-                            self.toasts.error("Failed to open recent file");
-                        }
+                        self.open_image_path(recent_path);
                     }
 
                     if let Some(preset) = p_resp.selected_preset {
@@ -750,10 +1059,13 @@ impl eframe::App for AdjustApp {
                                 description: "User custom configured preset".to_string(),
                                 params: self.params.clone(),
                             };
-                            if let Ok(json) = custom.to_json() {
-                                if std::fs::write(&path, json).is_ok() {
-                                    self.toasts.success("Custom preset saved");
-                                }
+                            match custom
+                                .to_json()
+                                .map_err(|e| e.to_string())
+                                .and_then(|json| std::fs::write(&path, json).map_err(|e| e.to_string()))
+                            {
+                                Ok(()) => self.toasts.success("Custom preset saved"),
+                                Err(e) => self.toasts.error(format!("Failed to save preset: {}", e)),
                             }
                         }
                     }
@@ -763,16 +1075,19 @@ impl eframe::App for AdjustApp {
                             .add_filter("JSON Preset", &["json"])
                             .pick_file()
                         {
-                            if let Ok(content) = std::fs::read_to_string(&path) {
-                                if let Ok(custom) = Preset::from_json(&content) {
-                                    self.push_undo();
-                                    self.params = custom.params;
-                                    self.selected_preset_name = custom.name.clone();
-                                    self.is_dirty = true;
-                                    self.toasts.success(format!("Loaded preset {}", custom.name));
-                                } else {
-                                    self.toasts.error("Invalid preset file format");
-                                }
+                            match std::fs::read_to_string(&path) {
+                                Ok(content) => match Preset::from_json(&content) {
+                                    Ok(custom) => {
+                                        self.push_undo();
+                                        // Clamp out-of-range values from hand-edited files.
+                                        self.params = custom.params.sanitized();
+                                        self.selected_preset_name = custom.name.clone();
+                                        self.is_dirty = true;
+                                        self.toasts.success(format!("Loaded preset {}", custom.name));
+                                    }
+                                    Err(e) => self.toasts.error(format!("Invalid preset file: {}", e)),
+                                },
+                                Err(e) => self.toasts.error(format!("Failed to read preset: {}", e)),
                             }
                         }
                     }
@@ -787,6 +1102,9 @@ impl eframe::App for AdjustApp {
                 .width_range(300.0..=480.0)
                 .show(ctx, |ui| {
                     // Top Zone: Inspector tabs
+                    let display_size = self
+                        .image_px_size()
+                        .map(|px| px * self.zoom / ui.ctx().pixels_per_point());
                     render_inspector_panel(
                         ui,
                         &mut self.inspector_tab,
@@ -794,7 +1112,7 @@ impl eframe::App for AdjustApp {
                         self.proc_texture.as_ref(),
                         self.histogram.as_ref(),
                         &mut self.pan,
-                        self.zoom,
+                        display_size,
                         self.canvas_size,
                     );
 
@@ -824,35 +1142,15 @@ impl eframe::App for AdjustApp {
                             }
 
                             if adj_resp.cancel_clicked {
-                                self.params = AdjustParams::default();
-                                self.selected_preset_name = "Neutral".to_string();
-                                self.layer_snapshots.clear();
-                                self.is_dirty = true;
-                                self.toasts.warn("Canceled all adjustments");
+                                self.cancel_all_layers();
                             }
 
                             if adj_resp.apply_clicked {
-                                if let Some(ref proc) = self.preview_proc_f32 {
-                                    self.layer_snapshots.push(self.params.clone());
-                                    self.preview_orig_f32 = Some(proc.clone());
-                                    if let Some(ref full_orig) = self.original_f32 {
-                                        let full_proc = process_image(full_orig, &self.params);
-                                        self.original_f32 = Some(full_proc);
-                                    }
-                                    self.params = AdjustParams::default();
-                                    self.selected_preset_name = "Neutral".to_string();
-                                    self.orig_texture = None;
-                                    self.is_dirty = true;
-                                    self.toasts.success("Baked effect layer into base!");
-                                }
+                                self.apply_layer();
                             }
 
                             if adj_resp.undo_layer_clicked {
-                                if !self.layer_snapshots.is_empty() {
-                                    self.layer_snapshots.pop();
-                                    self.is_dirty = true;
-                                    self.toasts.info("Popped effect layer");
-                                }
+                                self.undo_layer();
                             }
                         });
                 });
@@ -862,51 +1160,36 @@ impl eframe::App for AdjustApp {
         // 5. CENTER CANVAS VIEWPORT
         // ==========================================
         egui::CentralPanel::default().show(ctx, |ui| {
-            // Tiled High-Resolution Computation for visible viewport when zooming >= 100%
-            let mut tile_tuple: Option<(&egui::TextureHandle, egui::Rect)> = None;
-            if self.config.high_quality_tiled_preview && self.zoom >= 0.95 {
-                if let (Some(ref full_orig), Some(ref proc_tex)) = (&self.original_f32, &self.proc_texture) {
-                    let scaled_size = proc_tex.size_vec2() * self.zoom;
-                    let canvas_rect = ui.max_rect();
-                    let center = canvas_rect.center() + self.pan;
-                    let img_rect = egui::Rect::from_center_size(center, scaled_size);
-
-                    tile_tuple = self.tiled_viewer.get_or_render_full_res_tile(
-                        ctx,
-                        full_orig,
-                        &self.params,
-                        canvas_rect,
-                        img_rect,
-                    );
-                }
-            }
-
+            let image_px = self.image_px_size().unwrap_or(egui::Vec2::ZERO);
+            let tile = self.visible_tile();
             let canvas_resp = render_central_canvas(
                 ui,
                 self.view_mode,
                 &mut self.split_ratio,
                 &mut self.zoom,
                 &mut self.pan,
+                image_px,
                 self.proc_texture.as_ref(),
                 self.orig_texture.as_ref(),
-                tile_tuple,
-                self.original_f32.is_some(),
+                tile.as_ref().map(|(tex, rect)| (tex, *rect)),
+                self.base_f32.is_some(),
             );
 
             self.canvas_size = canvas_resp.canvas_size;
+            self.canvas_rect = Some(canvas_resp.canvas_rect);
+            self.canvas_img_rect = canvas_resp.img_rect;
 
             if let Some(path) = canvas_resp.dropped_path {
-                if let Ok(img) = image::open(&path) {
-                    self.set_image(img.to_rgb8(), path);
-                } else {
-                    self.toasts.error("Failed to load dropped image");
-                }
+                self.open_image_path(path);
             }
 
             if canvas_resp.open_clicked {
                 self.open_image_dialog();
             }
         });
+
+        // Ask for a full-resolution tile of whatever is now on screen
+        self.update_tile_request(ctx);
 
         // Overlay: Keyboard Shortcuts Cheat Sheet
         self.render_shortcuts_modal(ctx);

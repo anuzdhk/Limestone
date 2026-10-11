@@ -9,6 +9,7 @@ pub enum InspectorTab {
     Histogram,
 }
 
+#[allow(clippy::too_many_arguments)] // one argument per piece of widget state
 pub fn render_inspector_panel(
     ui: &mut Ui,
     current_tab: &mut InspectorTab,
@@ -16,7 +17,8 @@ pub fn render_inspector_panel(
     proc_texture: Option<&egui::TextureHandle>,
     histogram: Option<&HistogramData>,
     pan: &mut egui::Vec2,
-    zoom: f32,
+    // Size of the image as drawn on the canvas, in points.
+    display_size: Option<egui::Vec2>,
     canvas_size: egui::Vec2,
 ) {
     ui.add_space(SPACE_4);
@@ -117,7 +119,7 @@ pub fn render_inspector_panel(
                         egui::vec2(900.0, 600.0)
                     };
 
-                    let scaled_img_size = img_size * zoom;
+                    let scaled_img_size = display_size.unwrap_or(img_size);
                     let norm_vis_w = (effective_canvas.x / scaled_img_size.x).clamp(0.05, 1.0);
                     let norm_vis_h = (effective_canvas.y / scaled_img_size.y).clamp(0.05, 1.0);
 

@@ -1,13 +1,14 @@
 use adjust_core::{process_image, AdjustParams, RgbImageF32};
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::thread;
 use std::time::Instant;
 
 pub struct ExportJob {
-    pub image_path: Option<PathBuf>,
     pub save_path: PathBuf,
-    pub original_f32: RgbImageF32,
+    /// Full-resolution base image (applied layers already baked in).
+    pub base: Arc<RgbImageF32>,
     pub params: AdjustParams,
 }
 
@@ -38,10 +39,10 @@ impl BackgroundExporter {
         thread::spawn(move || {
             while let Ok(job) = job_rx.recv() {
                 let start = Instant::now();
-                let processed = process_image(&job.original_f32, &job.params);
-                let rgb8 = processed.to_rgb8();
+                let processed = process_image(&job.base, &job.params);
 
-                match rgb8.save(&job.save_path) {
+                // Keeps 16-bit depth and alpha when the output format supports them.
+                match processed.save(&job.save_path) {
                     Ok(_) => {
                         let elapsed_ms = start.elapsed().as_millis();
                         let _ = res_tx.send(ExportResult::Success {

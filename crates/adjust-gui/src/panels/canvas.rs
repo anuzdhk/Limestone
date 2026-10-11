@@ -8,14 +8,19 @@ pub struct CanvasResponse {
     pub dropped_path: Option<PathBuf>,
     pub open_clicked: bool,
     pub canvas_size: egui::Vec2,
+    pub canvas_rect: egui::Rect,
+    /// Where the image was drawn on screen (None in the empty state).
+    pub img_rect: Option<egui::Rect>,
 }
 
+#[allow(clippy::too_many_arguments)] // one argument per piece of widget state
 pub fn render_central_canvas(
     ui: &mut Ui,
     view_mode: ViewMode,
     split_ratio: &mut f32,
     zoom: &mut f32,
     pan: &mut egui::Vec2,
+    image_px: egui::Vec2,
     proc_texture: Option<&egui::TextureHandle>,
     orig_texture: Option<&egui::TextureHandle>,
     tile_texture: Option<(&egui::TextureHandle, egui::Rect)>,
@@ -26,12 +31,14 @@ pub fn render_central_canvas(
         dropped_path: None,
         open_clicked: false,
         canvas_size: available_size,
+        canvas_rect: egui::Rect::NOTHING,
+        img_rect: None,
     };
 
     // Receive drag and dropped files
     ui.input(|i| {
         if !i.raw.dropped_files.is_empty() {
-            if let Some(ref file) = i.raw.dropped_files.first() {
+            if let Some(file) = i.raw.dropped_files.first() {
                 if let Some(ref path) = file.path {
                     resp.dropped_path = Some(path.clone());
                 }
@@ -41,6 +48,7 @@ pub fn render_central_canvas(
 
     let (response, painter) =
         ui.allocate_painter(available_size, egui::Sense::click_and_drag());
+    resp.canvas_rect = response.rect;
 
     let canvas_bg = theme_canvas_bg(ui.visuals());
     let card_bg = theme_surface_card(ui.visuals());
@@ -136,17 +144,27 @@ pub fn render_central_canvas(
         *pan += response.drag_delta();
     }
 
-    // Mouse wheel zoom
-    let scroll_delta = ui.input(|i| i.smooth_scroll_delta.y);
+    // Mouse wheel zoom (multiplicative, so it feels the same at 5% and 500%)
+    let scroll_delta = if response.hovered() {
+        ui.input(|i| i.smooth_scroll_delta.y)
+    } else {
+        0.0
+    };
     if scroll_delta != 0.0 {
-        *zoom = (*zoom + scroll_delta * 0.0025).clamp(0.05, 10.0);
+        *zoom = (*zoom * (scroll_delta * 0.0025).exp()).clamp(0.01, 10.0);
     }
 
-    // Calculate image layout and centered drop shadow
-    let img_size = proc_tex.size_vec2();
-    let scaled_size = img_size * *zoom;
+    // `zoom` is physical screen pixels per full-resolution image pixel, so 1.0 is a true 100%.
+    // Fall back to the preview texture size if the full size isn't known.
+    let base_px = if image_px.x > 0.0 && image_px.y > 0.0 {
+        image_px
+    } else {
+        proc_tex.size_vec2()
+    };
+    let scaled_size = base_px * *zoom / ui.ctx().pixels_per_point();
     let center = response.rect.center() + *pan;
     let img_rect = egui::Rect::from_center_size(center, scaled_size);
+    resp.img_rect = Some(img_rect);
 
     // Subtle drop shadow around photo
     let shadow_rect = img_rect.expand(6.0);
@@ -175,8 +193,8 @@ pub fn render_central_canvas(
                 Color32::WHITE,
             );
 
-            // Tiled High-Resolution Overlay when zooming to 100% or greater
-            if !holding_space && *zoom >= 0.95 {
+            // Full-resolution tile overlay when zoomed in past the preview's resolution
+            if !holding_space {
                 if let Some((tile_tex, tile_norm_rect)) = tile_texture {
                     let tile_screen_min = egui::pos2(
                         img_rect.min.x + tile_norm_rect.min.x * img_rect.width(),

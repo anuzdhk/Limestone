@@ -13,19 +13,11 @@ pub const ICON_DEVICE_FLOPPY: &str = "\u{eb62}";     // File Save
 pub const ICON_REFRESH: &str = "\u{eb13}";           // Reset
 pub const ICON_LAYOUT_COLUMNS: &str = "\u{ead4}";    // Split / Comparison
 pub const ICON_PHOTO: &str = "\u{eb0a}";             // Viewport
-pub const ICON_CHART_LINE: &str = "\u{ea5c}";        // Live Histogram
-pub const ICON_CHECK: &str = "\u{ea5e}";             // Apply / Done
-pub const ICON_X: &str = "\u{eb55}";                 // Cancel / Close
 pub const ICON_SEARCH: &str = "\u{eb1c}";            // Loupe / Search
 pub const ICON_STAR: &str = "\u{eb2c}";              // Favorite Preset
 pub const ICON_STAR_FILLED: &str = "\u{f6f8}";       // Favorite Preset Active
-pub const ICON_COMPASS: &str = "\u{ea79}";           // Navigate
-pub const ICON_ZOOM_IN: &str = "\u{eb54}";           // Zoom In
-pub const ICON_ZOOM_OUT: &str = "\u{eb53}";          // Zoom Out
 pub const ICON_HISTORY: &str = "\u{eaee}";           // History / Snapshot
-pub const ICON_BRUSH: &str = "\u{ea42}";             // Local Adjustments Brush
 pub const ICON_APPLY: &str = "\u{f15f}";             // Apply Button (Stacking effects)
-pub const ICON_BOLT: &str = "\u{ea37}";              // Speed / GPU latency
 pub const ICON_GRIP: &str = "\u{eaeb}";              // Grip Vertical / Handle
 pub const ICON_ARROW_BACK_UP: &str = "\u{ea0c}";     // Undo
 pub const ICON_ARROW_FORWARD_UP: &str = "\u{ea0d}";  // Redo
@@ -38,7 +30,6 @@ pub const ICON_KEYBOARD: &str = "\u{eab5}";          // Keyboard shortcuts
 pub const ICON_SETTINGS: &str = "\u{eb20}";          // Settings / Preferences
 pub const ICON_CLIPBOARD: &str = "\u{ea70}";         // Paste / Clipboard
 pub const ICON_CPU: &str = "\u{ea85}";               // Compute / Hardware Acceleration
-pub const ICON_WORLD: &str = "\u{eb54}";             // Language / Globe
 pub const ICON_SLIDERS: &str = "\u{eb28}";           // Sliders / Opacity settings
 
 pub fn setup_tabler_fonts(ctx: &egui::Context) {

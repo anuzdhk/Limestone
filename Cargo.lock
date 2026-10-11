@@ -136,6 +136,7 @@ name = "adjust-gui"
 version = "0.1.0"
 dependencies = [
  "adjust-core",
+ "arboard",
  "eframe",
  "egui",
  "image",

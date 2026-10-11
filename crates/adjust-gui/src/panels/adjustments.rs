@@ -54,7 +54,6 @@ pub fn render_adjustments_accordion(
     state.show_body_unindented(ui, |ui| {
         ui.add_space(crate::theme::SPACE_4);
         let panel_bg = crate::theme::theme_surface_panel(ui.visuals());
-        let sec_text = crate::theme::theme_text_secondary(ui.visuals());
         egui::Frame::new()
             .fill(panel_bg)
             .inner_margin(egui::Margin::symmetric(4, 4))
@@ -125,7 +124,6 @@ pub fn render_adjustments_accordion(
     state.show_body_unindented(ui, |ui| {
         ui.add_space(crate::theme::SPACE_4);
         let panel_bg = crate::theme::theme_surface_panel(ui.visuals());
-        let sec_text = crate::theme::theme_text_secondary(ui.visuals());
         egui::Frame::new()
             .fill(panel_bg)
             .inner_margin(egui::Margin::symmetric(4, 4))
@@ -214,7 +212,6 @@ pub fn render_adjustments_accordion(
     state.show_body_unindented(ui, |ui| {
         ui.add_space(crate::theme::SPACE_4);
         let panel_bg = crate::theme::theme_surface_panel(ui.visuals());
-        let sec_text = crate::theme::theme_text_secondary(ui.visuals());
         egui::Frame::new()
             .fill(panel_bg)
             .inner_margin(egui::Margin::symmetric(4, 4))
@@ -308,7 +305,6 @@ pub fn render_adjustments_accordion(
     state.show_body_unindented(ui, |ui| {
         ui.add_space(crate::theme::SPACE_4);
         let panel_bg = crate::theme::theme_surface_panel(ui.visuals());
-        let sec_text = crate::theme::theme_text_secondary(ui.visuals());
         egui::Frame::new()
             .fill(panel_bg)
             .inner_margin(egui::Margin::symmetric(4, 4))
@@ -388,7 +384,6 @@ pub fn render_adjustments_accordion(
     state.show_body_unindented(ui, |ui| {
         ui.add_space(crate::theme::SPACE_4);
         let panel_bg = crate::theme::theme_surface_panel(ui.visuals());
-        let sec_text = crate::theme::theme_text_secondary(ui.visuals());
         egui::Frame::new()
             .fill(panel_bg)
             .inner_margin(egui::Margin::symmetric(4, 4))
@@ -441,7 +436,6 @@ pub fn render_adjustments_accordion(
     state.show_body_unindented(ui, |ui| {
         ui.add_space(crate::theme::SPACE_4);
         let panel_bg = crate::theme::theme_surface_panel(ui.visuals());
-        let sec_text = crate::theme::theme_text_secondary(ui.visuals());
         egui::Frame::new()
             .fill(panel_bg)
             .inner_margin(egui::Margin::symmetric(4, 4))
@@ -476,7 +470,6 @@ pub fn render_adjustments_accordion(
     state.show_body_unindented(ui, |ui| {
         ui.add_space(crate::theme::SPACE_4);
         let panel_bg = crate::theme::theme_surface_panel(ui.visuals());
-        let sec_text = crate::theme::theme_text_secondary(ui.visuals());
         egui::Frame::new()
             .fill(panel_bg)
             .inner_margin(egui::Margin::symmetric(4, 4))

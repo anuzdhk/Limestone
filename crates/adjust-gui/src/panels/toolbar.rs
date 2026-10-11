@@ -22,6 +22,7 @@ pub struct ToolbarResponse {
     pub shortcuts_clicked: bool,
 }
 
+#[allow(clippy::too_many_arguments)] // one argument per piece of widget state
 pub fn render_top_toolbar(
     ui: &mut Ui,
     view_mode: &mut ViewMode,
@@ -94,7 +95,7 @@ pub fn render_top_toolbar(
         }
 
         let btn_paste = egui::Button::new(
-            egui::RichText::new(format!("{}", ICON_CLIPBOARD)).size(13.0),
+            egui::RichText::new(ICON_CLIPBOARD.to_string()).size(13.0),
         )
         .min_size(egui::vec2(32.0, BTN_HEIGHT_MD));
 
@@ -109,7 +110,7 @@ pub fn render_top_toolbar(
         // Undo / Redo Buttons
         ui.add_enabled_ui(can_undo, |ui| {
             let btn_undo = egui::Button::new(
-                egui::RichText::new(format!("{}", ICON_ARROW_BACK_UP)).size(13.0),
+                egui::RichText::new(ICON_ARROW_BACK_UP.to_string()).size(13.0),
             )
             .min_size(egui::vec2(32.0, BTN_HEIGHT_MD));
             if ui.add(btn_undo).on_hover_text("Undo adjustment (Ctrl+Z)").clicked() {
@@ -119,7 +120,7 @@ pub fn render_top_toolbar(
 
         ui.add_enabled_ui(can_redo, |ui| {
             let btn_redo = egui::Button::new(
-                egui::RichText::new(format!("{}", ICON_ARROW_FORWARD_UP)).size(13.0),
+                egui::RichText::new(ICON_ARROW_FORWARD_UP.to_string()).size(13.0),
             )
             .min_size(egui::vec2(32.0, BTN_HEIGHT_MD));
             if ui.add(btn_redo).on_hover_text("Redo adjustment (Ctrl+Shift+Z)").clicked() {
@@ -207,7 +208,7 @@ pub fn render_top_toolbar(
 
             // Shortcuts Help Button
             let btn_help = egui::Button::new(
-                egui::RichText::new(format!("{}", ICON_HELP)).size(13.0),
+                egui::RichText::new(ICON_HELP.to_string()).size(13.0),
             )
             .min_size(egui::vec2(32.0, BTN_HEIGHT_MD));
             if ui.add(btn_help).on_hover_text("Keyboard shortcuts cheat sheet (?)").clicked() {
@@ -222,7 +223,9 @@ pub fn render_top_toolbar(
                 resp.reset_all_clicked = true;
             }
 
-            if last_process_time > 0.0 {
+            // Skip the badge when the window is too narrow (it's also in the status bar),
+            // otherwise it would draw over the zoom controls.
+            if last_process_time > 0.0 && ui.available_width() > 110.0 {
                 let badge = format!("⚡ {:.1} ms", last_process_time);
                 ui.label(
                     egui::RichText::new(badge)

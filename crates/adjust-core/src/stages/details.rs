@@ -1,15 +1,17 @@
 use crate::filter::guided_filter;
 use crate::image_buffer::RgbImageF32;
 use crate::params::DetailsParams;
+use crate::pipeline::RenderContext;
 use rayon::prelude::*;
 
-pub fn extract_detail_layer(
-    y: &[f32],
-    width: usize,
-    height: usize,
-    radius: f32,
-) -> Vec<f32> {
-    let r = (radius.round() as usize).max(1);
+/// Detail extraction radius in pixels: `params.radius` is in reference pixels
+/// (see [`crate::pipeline::REFERENCE_DIM`]) and scales with the full image size.
+pub fn detail_radius_px(params: &DetailsParams, ctx: &RenderContext) -> usize {
+    (params.radius * ctx.scale()).round().max(1.0) as usize
+}
+
+pub fn extract_detail_layer(y: &[f32], width: usize, height: usize, radius_px: usize) -> Vec<f32> {
+    let r = radius_px.max(1);
     let eps = 0.01 * 0.01;
     let smooth = guided_filter(y, y, width, height, r, eps);
 
@@ -87,12 +89,12 @@ pub fn apply_detail_layer(
         });
 }
 
-pub fn apply_details(img: &mut RgbImageF32, params: &DetailsParams) {
+pub fn apply_details(img: &mut RgbImageF32, params: &DetailsParams, ctx: &RenderContext) {
     if !params.enabled || (params.strength == 0.0 && params.sharpen == 0.0) {
         return;
     }
 
     let y = img.compute_luminance();
-    let detail = extract_detail_layer(&y, img.width, img.height, params.radius);
+    let detail = extract_detail_layer(&y, img.width, img.height, detail_radius_px(params, ctx));
     apply_detail_layer(img, &detail, params);
 }

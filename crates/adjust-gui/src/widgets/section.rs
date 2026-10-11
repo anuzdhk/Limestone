@@ -105,8 +105,8 @@ pub fn render_section_header(
             }
 
             // Reset button (only active when modified)
-            if is_modified {
-                if ui
+            if is_modified
+                && ui
                     .add(
                         egui::Button::new(
                             egui::RichText::new(ICON_REFRESH)
@@ -120,7 +120,6 @@ pub fn render_section_header(
                 {
                     resp.reset_clicked = true;
                 }
-            }
         });
     });
 

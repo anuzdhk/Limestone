@@ -1,9 +1,15 @@
 use crate::filter::guided_filter;
 use crate::image_buffer::RgbImageF32;
 use crate::params::NoiseParams;
+use crate::pipeline::RenderContext;
 use rayon::prelude::*;
 
-pub fn apply_denoise(img: &mut RgbImageF32, params: &NoiseParams) {
+/// Denoise filter radius: `amount` maps to 0..5 reference pixels, scaled to the full image.
+pub fn denoise_radius_px(params: &NoiseParams, ctx: &RenderContext) -> usize {
+    (params.amount * 5.0 * ctx.scale()).round().max(1.0) as usize
+}
+
+pub fn apply_denoise(img: &mut RgbImageF32, params: &NoiseParams, ctx: &RenderContext) {
     if !params.enabled || params.suppression == 0.0 {
         return;
     }
@@ -12,7 +18,7 @@ pub fn apply_denoise(img: &mut RgbImageF32, params: &NoiseParams) {
     let width = img.width;
     let height = img.height;
 
-    let radius = (params.amount * 5.0).round().max(1.0) as usize;
+    let radius = denoise_radius_px(params, ctx);
     let eps = (params.suppression * 0.05).max(0.001);
 
     let smooth_y = guided_filter(&y, &y, width, height, radius, eps * eps);

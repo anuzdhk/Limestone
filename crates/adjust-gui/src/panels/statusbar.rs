@@ -1,4 +1,3 @@
-use crate::icons::*;
 use crate::theme::*;
 use eframe::egui::{self, Ui};
 
@@ -54,7 +53,7 @@ pub fn render_bottom_statusbar(
 
         // Color Mode & Pipeline Resolution
         ui.label(
-            egui::RichText::new("RGB f32 (Linear Rec.709)")
+            egui::RichText::new("RGB f32 (sRGB)")
                 .size(11.0)
                 .color(mut_col),
         );

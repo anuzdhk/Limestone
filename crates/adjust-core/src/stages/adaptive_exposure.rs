@@ -1,9 +1,22 @@
 use crate::filter::guided_filter;
 use crate::image_buffer::RgbImageF32;
 use crate::params::AdaptiveExposureParams;
+use crate::pipeline::RenderContext;
 use rayon::prelude::*;
 
-pub fn apply_adaptive_exposure(img: &mut RgbImageF32, params: &AdaptiveExposureParams) {
+/// Guided-filter radius for the local tone mapping, proportional to the full image size
+/// (fewer regions -> larger, smoother illumination zones).
+pub fn adaptive_radius_px(params: &AdaptiveExposureParams, ctx: &RenderContext) -> usize {
+    let max_dim = ctx.full_width.max(ctx.full_height) as f32;
+    let scale_factor = (32 - params.regions.clamp(1, 30)) as f32 / 10.0;
+    ((max_dim / 30.0) * scale_factor).round().max(1.0) as usize
+}
+
+pub fn apply_adaptive_exposure(
+    img: &mut RgbImageF32,
+    params: &AdaptiveExposureParams,
+    ctx: &RenderContext,
+) {
     if !params.enabled {
         return;
     }
@@ -24,10 +37,8 @@ pub fn apply_adaptive_exposure(img: &mut RgbImageF32, params: &AdaptiveExposureP
     // 1. Compute perceptual luminance Y
     let y = img.compute_luminance();
 
-    // 2. Map regions parameter (1..30) to spatial radius
-    let max_dim = width.max(height);
-    let scale_factor = (32 - params.regions.clamp(1, 30)) as f32 / 10.0;
-    let radius = ((max_dim as f32 / 30.0) * scale_factor).round().clamp(4.0, 150.0) as usize;
+    // 2. Map regions parameter (1..30) to a spatial radius relative to the full image
+    let radius = adaptive_radius_px(params, ctx);
 
     // Edge-preserving guided filter on luminance Y to extract base illumination
     let eps = 0.02 * 0.02;

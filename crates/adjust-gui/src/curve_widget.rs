@@ -46,7 +46,7 @@ pub fn render_curve_editor(
     let card_bg = theme_surface_card(ui.visuals());
     let border_col = theme_border(ui.visuals());
     painter.rect_filled(rect, RADIUS_CONTROL, card_bg);
-    painter.rect_stroke(rect, RADIUS_CONTROL, Stroke::new(1.0, border_col), egui::StrokeKind::Inside);
+    painter.rect_stroke(rect, RADIUS_CONTROL, Stroke::new(1.0_f32, border_col), egui::StrokeKind::Inside);
 
     // 2. Faint Background Histogram
     if let Some(h) = hist {
@@ -93,7 +93,7 @@ pub fn render_curve_editor(
     } else {
         Color32::from_rgba_unmultiplied(0, 0, 0, 22)
     };
-    let grid_stroke = Stroke::new(1.0, grid_color);
+    let grid_stroke = Stroke::new(1.0_f32, grid_color);
     for step in [0.25, 0.50, 0.75] {
         let gx = rect.min.x + step * rect.width();
         let gy = rect.max.y - step * rect.height();
@@ -104,7 +104,7 @@ pub fn render_curve_editor(
     // 4. Diagonal 1:1 Reference Line
     painter.line_segment(
         [egui::pos2(rect.min.x, rect.max.y), egui::pos2(rect.max.x, rect.min.y)],
-        Stroke::new(1.0, Color32::from_rgba_unmultiplied(154, 163, 178, 45)),
+        Stroke::new(1.0_f32, Color32::from_rgba_unmultiplied(154, 163, 178, 45)),
     );
 
     // 5. Render Curve Spline
@@ -134,7 +134,7 @@ pub fn render_curve_editor(
         let pt0 = egui::pos2(rect.min.x + t0 * rect.width(), rect.max.y - y0 * rect.height());
         let pt1 = egui::pos2(rect.min.x + t1 * rect.width(), rect.max.y - y1 * rect.height());
 
-        painter.line_segment([pt0, pt1], Stroke::new(2.0, curve_color));
+        painter.line_segment([pt0, pt1], Stroke::new(2.0_f32, curve_color));
     }
 
     // 6. Interactive Control Points Handling
@@ -166,9 +166,8 @@ pub fn render_curve_editor(
                     let old_x = params.points[idx].x;
                     let old_y = params.points[idx].y;
 
-                    if idx == 0 {
-                        params.points[idx].y = rel_y;
-                    } else if idx == params.points.len() - 1 {
+                    // Endpoints are pinned horizontally; only their output level moves.
+                    if idx == 0 || idx == params.points.len() - 1 {
                         params.points[idx].y = rel_y;
                     } else {
                         params.points[idx].x = rel_x;

@@ -45,8 +45,19 @@ pub fn generate_curve_lut(points: &[CurvePoint]) -> [f32; 1024] {
         return lut;
     }
 
-    let mut sorted = points.to_vec();
-    sorted.sort_by(|a, b| a.x.partial_cmp(&b.x).unwrap());
+    // Non-finite points would poison the interpolation (and panic a partial_cmp sort).
+    let mut sorted: Vec<CurvePoint> = points
+        .iter()
+        .filter(|p| p.x.is_finite() && p.y.is_finite())
+        .cloned()
+        .collect();
+    if sorted.len() < 2 {
+        for (i, val) in lut.iter_mut().enumerate() {
+            *val = i as f32 / 1023.0;
+        }
+        return lut;
+    }
+    sorted.sort_by(|a, b| a.x.total_cmp(&b.x));
 
     for (i, val) in lut.iter_mut().enumerate() {
         let x = i as f32 / 1023.0;

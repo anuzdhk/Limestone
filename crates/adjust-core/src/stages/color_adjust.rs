@@ -50,7 +50,7 @@ pub fn apply_color_adjust(img: &mut RgbImageF32, params: &ColorParams) {
             if global_sat > 0.0 {
                 s = s + (1.0 - s) * global_sat;
             } else if global_sat < 0.0 {
-                s = s * (1.0 + global_sat);
+                s *= 1.0 + global_sat;
             }
 
             s = s.clamp(0.0, 1.0);

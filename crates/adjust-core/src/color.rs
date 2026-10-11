@@ -1,4 +1,4 @@
-/// Color conversions and utilities for gamma, HSV, and perceptual luminance.
+//! Color conversions and utilities for gamma, HSV, and perceptual luminance.
 
 #[inline(always)]
 pub fn srgb_to_linear(x: f32) -> f32 {

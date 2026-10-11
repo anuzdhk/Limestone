@@ -1,59 +1,56 @@
 use rayon::prelude::*;
 
-/// Fast separable 2D box blur with O(1) complexity per pixel.
-/// Handles edge conditions with clamped boundaries.
+/// Fast separable 2D box blur with O(1) cost per pixel, independent of `radius`.
+/// Edges are handled by clamping to the nearest valid pixel.
+///
+/// Both passes run as cache-friendly horizontal running sums: the vertical pass is
+/// performed on a transposed copy of the intermediate buffer.
 pub fn box_filter(src: &[f32], width: usize, height: usize, radius: usize) -> Vec<f32> {
-    if radius == 0 {
+    if radius == 0 || width == 0 || height == 0 {
         return src.to_vec();
     }
 
-    let size = width * height;
-    let mut temp = vec![0.0; size];
-    let mut dst = vec![0.0; size];
+    let horizontal = box_rows(src, width, radius);
+    let transposed = transpose(&horizontal, width, height);
+    let vertical = box_rows(&transposed, height, radius);
+    transpose(&vertical, height, width)
+}
 
+/// Running-sum box blur along each row of a `row_len`-wide buffer.
+fn box_rows(src: &[f32], row_len: usize, radius: usize) -> Vec<f32> {
+    let mut dst = vec![0.0; src.len()];
     let r = radius as isize;
+    let last = row_len as isize - 1;
+    let inv_len = 1.0 / (2 * radius + 1) as f32;
 
-    // 1. Horizontal pass across all rows in parallel
-    temp.par_chunks_mut(width)
-        .enumerate()
-        .for_each(|(y, row_out)| {
-            let row_in = &src[y * width..(y + 1) * width];
+    dst.par_chunks_mut(row_len)
+        .zip(src.par_chunks(row_len))
+        .for_each(|(row_out, row_in)| {
+            // Accumulate in f64 so long rows with large radii don't drift.
+            let mut sum: f64 = (-r..=r)
+                .map(|k| row_in[k.clamp(0, last) as usize] as f64)
+                .sum();
+            row_out[0] = (sum as f32) * inv_len;
 
-            // Initialize running window sum with clamp boundary on left
-            let mut sum: f32 = 0.0;
-            for k in -r..=r {
-                let clamped_x = k.clamp(0, width as isize - 1) as usize;
-                sum += row_in[clamped_x];
-            }
-
-            let win_len = (2 * r + 1) as f32;
-            row_out[0] = sum / win_len;
-
-            // Slide window across row
-            for x in 1..width {
-                let add_x = (x as isize + r).clamp(0, width as isize - 1) as usize;
-                let sub_x = (x as isize - r - 1).clamp(0, width as isize - 1) as usize;
-                sum += row_in[add_x] - row_in[sub_x];
-                row_out[x] = sum / win_len;
+            for (x, out) in row_out.iter_mut().enumerate().skip(1) {
+                let add_x = (x as isize + r).min(last) as usize;
+                let sub_x = (x as isize - r - 1).max(0) as usize;
+                sum += row_in[add_x] as f64 - row_in[sub_x] as f64;
+                *out = (sum as f32) * inv_len;
             }
         });
 
-    // 2. Vertical pass across all columns in parallel
-    // Process columns in blocks or transpose for cache efficiency
-    dst.par_chunks_mut(width)
-        .enumerate()
-        .for_each(|(y, row_out)| {
-            let y_i = y as isize;
-            for x in 0..width {
-                let mut sum: f32 = 0.0;
-                for k in -r..=r {
-                    let clamped_y = (y_i + k).clamp(0, height as isize - 1) as usize;
-                    sum += temp[clamped_y * width + x];
-                }
-                row_out[x] = sum / (2 * r + 1) as f32;
-            }
-        });
+    dst
+}
 
+/// Transposes a `width x height` row-major buffer into a `height x width` one.
+fn transpose(src: &[f32], width: usize, height: usize) -> Vec<f32> {
+    let mut dst = vec![0.0; src.len()];
+    dst.par_chunks_mut(height).enumerate().for_each(|(x, col)| {
+        for (y, out) in col.iter_mut().enumerate() {
+            *out = src[y * width + x];
+        }
+    });
     dst
 }
 
@@ -127,4 +124,40 @@ pub fn guided_filter(
         });
 
     q
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn naive_box(src: &[f32], w: usize, h: usize, r: usize) -> Vec<f32> {
+        let r = r as isize;
+        let mut out = vec![0.0; w * h];
+        for y in 0..h as isize {
+            for x in 0..w as isize {
+                let mut sum = 0.0;
+                for dy in -r..=r {
+                    for dx in -r..=r {
+                        let sx = (x + dx).clamp(0, w as isize - 1) as usize;
+                        let sy = (y + dy).clamp(0, h as isize - 1) as usize;
+                        sum += src[sy * w + sx];
+                    }
+                }
+                out[(y as usize) * w + x as usize] = sum / ((2 * r + 1) * (2 * r + 1)) as f32;
+            }
+        }
+        out
+    }
+
+    #[test]
+    fn box_filter_matches_naive_reference() {
+        for &(w, h, r) in &[(17, 9, 1), (13, 21, 4), (5, 3, 12), (1, 7, 2), (8, 1, 3)] {
+            let src: Vec<f32> = (0..w * h).map(|i| ((i * 37) % 101) as f32 / 100.0).collect();
+            let fast = box_filter(&src, w, h, r);
+            let slow = naive_box(&src, w, h, r);
+            for (a, b) in fast.iter().zip(&slow) {
+                assert!((a - b).abs() < 1e-4, "{w}x{h} r={r}: {a} vs {b}");
+            }
+        }
+    }
 }

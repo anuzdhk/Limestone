@@ -9,11 +9,19 @@ on:
 permissions:
   contents: write
 
+env:
+  # Tag "v0.1.0-beta" -> "0.1.0-beta"; manual runs fall back to the dev label.
+  VERSION: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || 'dev' }}
+
 jobs:
   build-windows:
     name: Build Windows MSI Installer
     runs-on: windows-latest
     steps:
+      - name: Resolve version
+        shell: bash
+        run: echo "VERSION_STRIPPED=${VERSION#v}" >> "$GITHUB_ENV"
+
       - name: Checkout repository
         uses: actions/checkout@v4
 
@@ -33,18 +41,23 @@ jobs:
         shell: pwsh
         run: |
           dotnet tool install --global wix
-          wix build wix/main.wxs -arch x64 -o dist/LimeStone-0.1.0-beta-x64.msi
+          New-Item -ItemType Directory -Path "dist" -Force | Out-Null
+          wix build wix/main.wxs -arch x64 -o "dist/LimeStone-${{ env.VERSION_STRIPPED }}-x64.msi"
 
       - name: Upload Windows MSI artifact
         uses: actions/upload-artifact@v4
         with:
           name: LimeStone-Windows-MSI
-          path: dist/LimeStone-0.1.0-beta-x64.msi
+          path: dist/LimeStone-${{ env.VERSION_STRIPPED }}-x64.msi
 
   build-macos:
     name: Build macOS DMG Installer
     runs-on: macos-latest
     steps:
+      - name: Resolve version
+        shell: bash
+        run: echo "VERSION_STRIPPED=${VERSION#v}" >> "$GITHUB_ENV"
+
       - name: Checkout repository
         uses: actions/checkout@v4
 
@@ -112,13 +125,13 @@ jobs:
           mkdir -p dmg_root
           cp -r dist/LimeStone.app dmg_root/
           ln -s /Applications dmg_root/Applications
-          hdiutil create -volname "LimeStone Pro" -srcfolder dmg_root -ov -format UDZO dist/LimeStone-0.1.0-beta-Universal.dmg
+          hdiutil create -volname "LimeStone Pro" -srcfolder dmg_root -ov -format UDZO dist/LimeStone-${{ env.VERSION_STRIPPED }}-Universal.dmg
 
       - name: Upload macOS DMG artifact
         uses: actions/upload-artifact@v4
         with:
           name: LimeStone-macOS-DMG
-          path: dist/LimeStone-0.1.0-beta-Universal.dmg
+          path: dist/LimeStone-${{ env.VERSION_STRIPPED }}-Universal.dmg
 
   publish-release:
     name: Publish GitHub Release
@@ -126,6 +139,10 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     steps:
+      - name: Resolve version
+        shell: bash
+        run: echo "VERSION_STRIPPED=${VERSION#v}" >> "$GITHUB_ENV"
+
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
@@ -135,8 +152,8 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            artifacts/LimeStone-Windows-MSI/LimeStone-0.1.0-beta-x64.msi
-            artifacts/LimeStone-macOS-DMG/LimeStone-0.1.0-beta-Universal.dmg
-          name: LimeStone Pro 0.1.0-beta
+            artifacts/LimeStone-Windows-MSI/LimeStone-${{ env.VERSION_STRIPPED }}-x64.msi
+            artifacts/LimeStone-macOS-DMG/LimeStone-${{ env.VERSION_STRIPPED }}-Universal.dmg
+          name: LimeStone Pro ${{ env.VERSION_STRIPPED }}
           prerelease: true
           generate_release_notes: true

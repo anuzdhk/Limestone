@@ -10,8 +10,12 @@ param(
 $ErrorActionPreference = "Stop"
 
 Write-Host "==> [1/4] Building LimeStone release binary..." -ForegroundColor Cyan
-$env:CARGO_TARGET_DIR = "C:\Users\anuzd\.cache\cargo-target-androp"
+# Respect a caller-provided CARGO_TARGET_DIR, otherwise use the workspace default.
+if (-not $env:CARGO_TARGET_DIR) {
+    $env:CARGO_TARGET_DIR = Join-Path $PSScriptRoot "..\target"
+}
 cargo build --release -p adjust-gui
+if ($LASTEXITCODE -ne 0) { Write-Error "cargo build failed." }
 
 Write-Host "==> [2/4] Deploying binary and icons..." -ForegroundColor Cyan
 New-Item -ItemType Directory -Path "bin" -Force | Out-Null
@@ -23,6 +27,7 @@ Copy-Item "$env:CARGO_TARGET_DIR\release\adjust-gui.exe" -Destination "bin\adjus
 Write-Host "==> [3/4] Building Windows MSI Installer with WiX Toolset..." -ForegroundColor Cyan
 $msiOutput = "dist\LimeStone-$Version-x64.msi"
 wix build wix\main.wxs -arch x64 -o $msiOutput
+if ($LASTEXITCODE -ne 0) { Write-Error "wix build failed." }
 
 if (Test-Path $msiOutput) {
     $sizeMb = [math]::Round((Get-Item $msiOutput).Length / 1MB, 2)

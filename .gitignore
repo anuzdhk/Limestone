@@ -2,3 +2,8 @@
 crates/cargo-target/
 **/*.rs.bk
 *.pdb
+*.wixpdb
+
+# Release outputs (built by CI and attached to GitHub Releases)
+/bin/
+/dist/

@@ -1,5 +1,5 @@
 use crate::theme::*;
-use eframe::egui::{self, Color32};
+use eframe::egui::{self};
 use std::time::{Duration, Instant};
 
 #[derive(Clone, Copy, PartialEq)]

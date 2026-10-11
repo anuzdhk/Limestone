@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct BasicExposureParams {
     pub enabled: bool,
     pub brightness: f32,    // -1.0 .. 1.0, default 0.0
@@ -22,6 +23,7 @@ impl Default for BasicExposureParams {
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct AdaptiveExposureParams {
     pub enabled: bool,
     pub adaptive_exposure: f32,   // 0.0 .. 3.0, default 0.0
@@ -47,6 +49,7 @@ impl Default for AdaptiveExposureParams {
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct DetailsParams {
     pub enabled: bool,
     pub strength: f32,              // -1.0 .. 3.0, default 0.0 (negative softens/smooths)
@@ -72,6 +75,7 @@ impl Default for DetailsParams {
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct ColorParams {
     pub enabled: bool,
     pub adaptive_saturation: f32, // -1.0 .. 2.0, default 0.0
@@ -95,6 +99,7 @@ impl Default for ColorParams {
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct NoiseParams {
     pub enabled: bool,
     pub suppression: f32, // 0.0 .. 1.0, default 0.0
@@ -118,6 +123,7 @@ pub struct CurvePoint {
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct CurveParams {
     pub enabled: bool,
     pub points: Vec<CurvePoint>, // Control points for natural cubic spline
@@ -186,6 +192,7 @@ impl CurveParams {
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct VignetteParams {
     pub amount: f32,     // -1.0 .. 1.0, default 0.0 (negative = dark, positive = light)
     pub size: f32,       // 0.1 .. 1.0, default 0.5
@@ -205,6 +212,7 @@ impl Default for VignetteParams {
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct GrainParams {
     pub amount: f32, // 0.0 .. 1.0, default 0.0
     pub size: f32,   // 0.5 .. 3.0, default 1.0
@@ -220,6 +228,7 @@ impl Default for GrainParams {
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct BorderParams {
     pub enabled: bool,
     pub thickness: f32,  // 0.0 .. 0.20 (percentage of min dimension), default 0.0
@@ -237,6 +246,7 @@ impl Default for BorderParams {
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct FinishingParams {
     pub enabled: bool,
     pub transparency: f32, // 0.0 .. 1.0, default 0.0 (0.0 = 100% effect, 1.0 = original image)
@@ -259,8 +269,12 @@ impl Default for FinishingParams {
     }
 }
 
-/// The complete parameter set matching Topaz Adjust 4.0.
+/// The complete adjustment parameter set.
+///
+/// Every struct uses `#[serde(default)]`, so presets or recovery files that are missing
+/// fields (e.g. written by an older version) still load with defaults for the gaps.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct AdjustParams {
     pub basic_exposure: BasicExposureParams,
     pub adaptive_exposure: AdaptiveExposureParams,
@@ -269,4 +283,78 @@ pub struct AdjustParams {
     pub noise: NoiseParams,
     pub curve: CurveParams,
     pub finishing: FinishingParams,
+}
+
+/// Clamps `v` into `[lo, hi]`, replacing NaN/infinite values with `default`.
+fn fin(v: f32, lo: f32, hi: f32, default: f32) -> f32 {
+    if v.is_finite() {
+        v.clamp(lo, hi)
+    } else {
+        default
+    }
+}
+
+impl AdjustParams {
+    /// Returns a copy with every value forced into its supported range.
+    ///
+    /// Presets are user-editable JSON, so the pipeline never trusts them directly:
+    /// out-of-range values (e.g. a border thicker than half the image) or NaNs would
+    /// otherwise cause panics or garbage output.
+    pub fn sanitized(&self) -> Self {
+        let mut p = self.clone();
+
+        let b = &mut p.basic_exposure;
+        b.brightness = fin(b.brightness, -1.0, 1.0, 0.0);
+        b.contrast = fin(b.contrast, -1.0, 1.0, 0.0);
+        b.boost_blacks = fin(b.boost_blacks, 0.0, 1.0, 0.0);
+        b.boost_whites = fin(b.boost_whites, 0.0, 1.0, 0.0);
+
+        let a = &mut p.adaptive_exposure;
+        a.adaptive_exposure = fin(a.adaptive_exposure, 0.0, 3.0, 0.0);
+        a.regions = a.regions.clamp(1, 30);
+        a.contrast = fin(a.contrast, -1.0, 1.0, 0.0);
+        a.brightness = fin(a.brightness, -1.0, 1.0, 0.0);
+        a.protect_highlights = fin(a.protect_highlights, 0.0, 1.0, 0.0);
+        a.protect_shadows = fin(a.protect_shadows, 0.0, 1.0, 0.0);
+
+        let d = &mut p.details;
+        d.strength = fin(d.strength, -1.0, 3.0, 0.0);
+        d.detail_boost = fin(d.detail_boost, 0.0, 3.0, 1.0);
+        d.threshold = fin(d.threshold, 0.0, 1.0, 0.10);
+        d.radius = fin(d.radius, 0.5, 30.0, 1.0);
+        d.sharpen = fin(d.sharpen, 0.0, 2.0, 0.0);
+
+        let c = &mut p.color;
+        c.adaptive_saturation = fin(c.adaptive_saturation, -1.0, 2.0, 0.0);
+        c.color_regions = c.color_regions.clamp(1, 30);
+        c.saturation = fin(c.saturation, -1.0, 1.0, 0.0);
+        c.saturation_boost = fin(c.saturation_boost, 0.0, 2.0, 1.0);
+        c.hue = fin(c.hue, -180.0, 180.0, 0.0);
+
+        let n = &mut p.noise;
+        n.suppression = fin(n.suppression, 0.0, 1.0, 0.0);
+        n.amount = fin(n.amount, 0.0, 1.0, 0.5);
+
+        p.curve.points.retain(|pt| pt.x.is_finite() && pt.y.is_finite());
+        for pt in &mut p.curve.points {
+            pt.x = pt.x.clamp(0.0, 1.0);
+            pt.y = pt.y.clamp(0.0, 1.0);
+        }
+
+        let f = &mut p.finishing;
+        f.transparency = fin(f.transparency, 0.0, 1.0, 0.0);
+        f.warmth = fin(f.warmth, -1.0, 1.0, 0.0);
+        f.vignette.amount = fin(f.vignette.amount, -1.0, 1.0, 0.0);
+        f.vignette.size = fin(f.vignette.size, 0.1, 1.0, 0.5);
+        f.vignette.transition = fin(f.vignette.transition, 0.0, 1.0, 0.5);
+        f.vignette.roundness = fin(f.vignette.roundness, 0.0, 1.0, 0.0);
+        f.grain.amount = fin(f.grain.amount, 0.0, 1.0, 0.0);
+        f.grain.size = fin(f.grain.size, 0.5, 3.0, 1.0);
+        f.border.thickness = fin(f.border.thickness, 0.0, 0.2, 0.0);
+        for ch in &mut f.border.color {
+            *ch = fin(*ch, 0.0, 1.0, 1.0);
+        }
+
+        p
+    }
 }
